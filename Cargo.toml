@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "apps/agent",
+    "crates/core",
+    "crates/detectors",
+    "crates/protocol",
+    "crates/ml-runtime"
+]
+resolver = "2"

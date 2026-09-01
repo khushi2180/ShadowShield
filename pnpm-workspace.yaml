@@ -1,0 +1,5 @@
+packages:
+  - 'apps/tray'
+  - 'apps/extension'
+  - 'apps/dashboard'
+  - 'apps/server'

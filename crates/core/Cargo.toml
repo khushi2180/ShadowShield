@@ -1,0 +1,8 @@
+[package]
+name = "shadowshield-core"
+version = "0.1.0-dev"
+edition = "2021"
+
+[dependencies]
+shadowshield-protocol = { path = "../protocol" }
+shadowshield-detectors = { path = "../detectors" }

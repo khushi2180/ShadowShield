@@ -1,0 +1,10 @@
+[package]
+name = "shadowshield-agent"
+version = "0.1.0-dev"
+edition = "2021"
+
+[dependencies]
+shadowshield-protocol = { path = "../../crates/protocol" }
+shadowshield-core = { path = "../../crates/core" }
+log = "0.4"
+env_logger = "0.11"

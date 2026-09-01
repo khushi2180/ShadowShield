@@ -1,0 +1,18 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Node/TS
+node_modules/
+dist/
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Ignore actual models and datasets completely
+/models/manifests/*.bin
+/models/manifests/*.onnx
+/ml/datasets/manifests/*.csv
+/ml/datasets/manifests/*.jsonl
