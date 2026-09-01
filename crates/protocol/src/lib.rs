@@ -48,7 +48,7 @@ impl Confidence {
             Err("Confidence must be between 0 and 100")
         }
     }
-    
+
     pub fn value(&self) -> u8 {
         self.0
     }
@@ -64,7 +64,10 @@ pub struct DetectionLocation {
 impl DetectionLocation {
     pub fn new(start: usize, end: usize) -> Result<Self, &'static str> {
         if start <= end {
-            Ok(Self { start_byte: start, end_byte: end })
+            Ok(Self {
+                start_byte: start,
+                end_byte: end,
+            })
         } else {
             Err("start_byte must be <= end_byte")
         }
@@ -162,7 +165,7 @@ mod tests {
     fn test_detection_location_unicode() {
         let text = "Hello, 世界"; // '世' is 3 bytes (idx 7..10), '界' is 3 bytes (idx 10..13)
         assert_eq!(text.len(), 13);
-        
+
         // ASCII boundaries
         let loc1 = DetectionLocation::new(0, 5).unwrap();
         assert!(loc1.validate_for(text).is_ok());
@@ -178,9 +181,12 @@ mod tests {
         // Out of range boundary
         let loc4 = DetectionLocation::new(0, 15).unwrap();
         assert!(loc4.validate_for(text).is_err());
-        
+
         // Reversed range (though blocked by new(), we can test it conceptually or bypass for test)
-        let loc5 = DetectionLocation { start_byte: 10, end_byte: 5 };
+        let loc5 = DetectionLocation {
+            start_byte: 10,
+            end_byte: 5,
+        };
         assert!(loc5.validate_for(text).is_err());
     }
 
@@ -190,7 +196,7 @@ mod tests {
         let debug_str = format!("{:?}", sensitive);
         assert!(!debug_str.contains("password"));
         assert_eq!(debug_str, "SensitiveText(<redacted>)");
-        
+
         let request = InspectionRequest {
             request_id: "r1".to_string(),
             source: InspectionSource::Unknown,

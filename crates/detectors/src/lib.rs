@@ -2,7 +2,7 @@ use shadowshield_protocol::{Detection, SensitiveText};
 
 pub trait Detector {
     fn id(&self) -> &str;
-    
+
     /// Inspect pure text context and return any detections.
     /// Does not have access to telemetry, network, filesystem, etc.
     /// Access to the underlying raw content should be deliberate via `content.expose()`.

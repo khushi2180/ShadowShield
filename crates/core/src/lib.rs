@@ -1,7 +1,9 @@
 use log::info;
-use std::time::Instant;
 use shadowshield_detectors::DetectorRegistry;
-use shadowshield_protocol::{Detection, InspectionRequest, InspectionResult, PolicyAction, RiskLevel};
+use shadowshield_protocol::{
+    Detection, InspectionRequest, InspectionResult, PolicyAction, RiskLevel,
+};
+use std::time::Instant;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum RiskError {
@@ -82,10 +84,14 @@ impl Inspector {
 
     pub fn validate_request(&self, request: &InspectionRequest) -> Result<(), InspectorError> {
         if request.request_id.trim().is_empty() {
-            return Err(InspectorError::InvalidRequest("request_id cannot be empty".to_string()));
+            return Err(InspectorError::InvalidRequest(
+                "request_id cannot be empty".to_string(),
+            ));
         }
         if request.ai_service.trim().is_empty() {
-            return Err(InspectorError::InvalidRequest("ai_service cannot be empty".to_string()));
+            return Err(InspectorError::InvalidRequest(
+                "ai_service cannot be empty".to_string(),
+            ));
         }
         Ok(())
     }
@@ -99,20 +105,30 @@ impl Inspector {
 
         // Run registered detectors
         let detections = self.detectors.inspect_all(&request.content);
-        
+
         // Determine baseline risk
-        let risk = self.risk_engine.evaluate(&detections)
+        let risk = self
+            .risk_engine
+            .evaluate(&detections)
             .map_err(|_| InspectorError::RiskEvaluationFailed)?;
-        
+
         // Determine baseline policy action
-        let action = self.policy_engine.evaluate(&risk)
+        let action = self
+            .policy_engine
+            .evaluate(&risk)
             .map_err(|_| InspectorError::PolicyEvaluationFailed)?;
 
         let processing_duration_ms = start_time.elapsed().as_millis() as u64;
 
         // NOTE: We do not log content here. We only log privacy-safe metadata.
-        info!("inspection completed request_id={} detections={} risk={:?} action={:?} duration_ms={}", 
-            request.request_id, detections.len(), risk, action, processing_duration_ms);
+        info!(
+            "inspection completed request_id={} detections={} risk={:?} action={:?} duration_ms={}",
+            request.request_id,
+            detections.len(),
+            risk,
+            action,
+            processing_duration_ms
+        );
 
         Ok(InspectionResult {
             request_id: request.request_id,
@@ -133,7 +149,9 @@ impl Default for Inspector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shadowshield_protocol::{InspectionSource, SensitiveText, DetectionCategory, Severity, Confidence};
+    use shadowshield_protocol::{
+        Confidence, DetectionCategory, InspectionSource, SensitiveText, Severity,
+    };
 
     #[test]
     fn test_empty_inspection_produces_low_allow() {
@@ -169,7 +187,7 @@ mod tests {
     #[test]
     fn test_risk_engine_fail_open_prevention() {
         let risk_engine = RiskEngine::new();
-        
+
         // 0 detections -> LOW
         assert_eq!(risk_engine.evaluate(&[]), Ok(RiskLevel::Low));
 
@@ -182,20 +200,35 @@ mod tests {
             location: None,
             severity: Severity::Low,
         };
-        
-        assert_eq!(risk_engine.evaluate(&[dummy_detection]), Err(RiskError::EvaluationNotImplemented));
+
+        assert_eq!(
+            risk_engine.evaluate(&[dummy_detection]),
+            Err(RiskError::EvaluationNotImplemented)
+        );
     }
 
     #[test]
     fn test_policy_engine_fail_open_prevention() {
         let policy_engine = PolicyEngine::new();
-        
+
         // Low -> Allow
-        assert_eq!(policy_engine.evaluate(&RiskLevel::Low), Ok(PolicyAction::Allow));
+        assert_eq!(
+            policy_engine.evaluate(&RiskLevel::Low),
+            Ok(PolicyAction::Allow)
+        );
 
         // Others -> Err
-        assert_eq!(policy_engine.evaluate(&RiskLevel::Medium), Err(PolicyError::EvaluationNotImplemented));
-        assert_eq!(policy_engine.evaluate(&RiskLevel::High), Err(PolicyError::EvaluationNotImplemented));
-        assert_eq!(policy_engine.evaluate(&RiskLevel::Critical), Err(PolicyError::EvaluationNotImplemented));
+        assert_eq!(
+            policy_engine.evaluate(&RiskLevel::Medium),
+            Err(PolicyError::EvaluationNotImplemented)
+        );
+        assert_eq!(
+            policy_engine.evaluate(&RiskLevel::High),
+            Err(PolicyError::EvaluationNotImplemented)
+        );
+        assert_eq!(
+            policy_engine.evaluate(&RiskLevel::Critical),
+            Err(PolicyError::EvaluationNotImplemented)
+        );
     }
 }
