@@ -1,21 +1,16 @@
 use log::info;
-use shadowshield_core::Engine;
+use shadowshield_core::Inspector;
 
 fn main() {
     env_logger::init();
     info!("ShadowShield Agent starting");
-    info!("Version: 0.1.0-dev");
     
-    #[cfg(target_os = "windows")]
-    info!("Platform: Windows");
+    // Initialize the core inspection engine
+    let _inspector = Inspector::new();
+    info!("Inspection engine initialized");
     
-    #[cfg(target_os = "macos")]
-    info!("Platform: macOS");
-    
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    info!("Platform: Unknown");
-
-    let _engine = Engine::new();
+    // In Phase 1A, the detector registry starts empty
+    info!("Detectors loaded: 0");
     
     info!("Status: ready");
 }

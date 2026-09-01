@@ -1,11 +1,41 @@
+use shadowshield_protocol::{Detection, SensitiveText};
+
 pub trait Detector {
-    fn name(&self) -> &str;
+    fn id(&self) -> &str;
+    
+    /// Inspect pure text context and return any detections.
+    /// Does not have access to telemetry, network, filesystem, etc.
+    /// Access to the underlying raw content should be deliberate via `content.expose()`.
+    fn inspect(&self, content: &SensitiveText) -> Vec<Detection>;
 }
 
-pub struct DummyDetector;
+pub struct DetectorRegistry {
+    detectors: Vec<Box<dyn Detector>>,
+}
 
-impl Detector for DummyDetector {
-    fn name(&self) -> &str {
-        "Dummy"
+impl DetectorRegistry {
+    pub fn new() -> Self {
+        Self {
+            detectors: Vec::new(),
+        }
+    }
+
+    pub fn register(&mut self, detector: Box<dyn Detector>) {
+        self.detectors.push(detector);
+    }
+
+    pub fn inspect_all(&self, content: &SensitiveText) -> Vec<Detection> {
+        let mut all_detections = Vec::new();
+        for detector in &self.detectors {
+            let mut detections = detector.inspect(content);
+            all_detections.append(&mut detections);
+        }
+        all_detections
+    }
+}
+
+impl Default for DetectorRegistry {
+    fn default() -> Self {
+        Self::new()
     }
 }

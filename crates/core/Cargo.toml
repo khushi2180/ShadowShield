@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 shadowshield-protocol = { path = "../protocol" }
 shadowshield-detectors = { path = "../detectors" }
+log = "0.4"
