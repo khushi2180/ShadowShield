@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 shadowshield-protocol = { path = "../protocol" }
 regex = "1.10"
+base64 = "0.23.1"
+serde_json = "1.0.151"

@@ -90,6 +90,33 @@
       "expected_result": "ChecksumValid",
       "approved_by_maintainer": true,
       "value": "3700 0000 0000 002"
+    },
+    {
+      "fixture_id": "secret.jwt.doc.1",
+      "detector": "secret.token.jwt",
+      "source": "RFC 7519 Section 3.1",
+      "source_type": "OFFICIAL_STANDARD_EXAMPLE",
+      "expected_result": "StructurallyValid",
+      "approved_by_maintainer": true,
+      "value": "eyJ0eXAiOiJKV1QiLA0KICJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ.dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+    },
+    {
+      "fixture_id": "secret.private_key.doc.1",
+      "detector": "secret.cryptographic.private_key",
+      "source": "RFC 8410 private-key textual-encoding example",
+      "source_type": "OFFICIAL_STANDARD_EXAMPLE",
+      "expected_result": "StructurallyValid",
+      "approved_by_maintainer": true,
+      "value": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC\n-----END PRIVATE KEY-----"
+    },
+    {
+      "fixture_id": "secret.private_key.doc.2",
+      "detector": "secret.cryptographic.private_key",
+      "source": "RFC 7468 Figure 13",
+      "source_type": "OFFICIAL_STANDARD_EXAMPLE",
+      "expected_result": "StructurallyValid",
+      "approved_by_maintainer": true,
+      "value": "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIHNMEAGCSqGSIb3DQEFDTAzMBsGCSqGSIb3DQEFDDAOBAghhICA6T/51QICCAAw\nFAYIKoZIhvcNAwcECBCxDgvI59i9BIGIY3CAqlMNBgaSI5QiiWVNJ3IpfLnEiEsW\nZ0JIoHyRmKK/+cr9QPLnzxImm0TR9s4JrG3CilzTWvb0jIvbG3hu0zyFPraoMkap\n8eRzWsIvC5SVel+CSjoS2mVS87cyjlD+txrmrXOVYDE+eTgMLbrLmsWh3QkCTRtF\nQC7k0NNzUHTV9yGDwfqMbw==\n-----END ENCRYPTED PRIVATE KEY-----"
     }
   ]
 }
