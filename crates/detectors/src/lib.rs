@@ -3,6 +3,7 @@ use shadowshield_protocol::{Detection, DetectorId, SensitiveText};
 pub mod email;
 pub mod ipv4;
 pub mod ipv6;
+pub mod payment_card;
 
 pub trait Detector {
     fn id(&self) -> &DetectorId;
