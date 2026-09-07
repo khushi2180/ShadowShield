@@ -1,8 +1,11 @@
-# Fixture Policy
+# Fixture Storage Policy
 
-- **Maintainer Approval Required:** No fixture enters the repository automatically.
-- **No Autonomous Fabrication:** Antigravity may not hallucinate, generate, or scrape fixtures.
-- **Provenance Requirements:** Fixtures must be sourced from official provider test data, official standards, or maintainer-approved sets.
-- **Manifest Requirements:** All fixtures must eventually be documented in `manifest.json`.
-- **No Active Credentials:** Live, active, or real user data must never be used.
-- **No Scraped PII:** Real user PII is strictly prohibited.
+Provider-published test credentials may themselves match GitHub/GitLab/other secret scanners. Therefore:
+
+- Complete secret-shaped credentials should not be committed literally.
+- Push protection must never be bypassed merely because a credential is a test fixture.
+- Approved secret fixtures may use safe test-time reconstruction (e.g. string concatenation) to prevent triggering static scanning on the repository.
+- Provenance must still identify the authoritative source.
+- Reconstruction must produce exactly the maintainer-approved fixture.
+- Coding agents may not invent fragments representing a different credential.
+- Production/live credentials remain prohibited.

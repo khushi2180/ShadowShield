@@ -117,6 +117,16 @@
       "expected_result": "StructurallyValid",
       "approved_by_maintainer": true,
       "value": "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIHNMEAGCSqGSIb3DQEFDTAzMBsGCSqGSIb3DQEFDDAOBAghhICA6T/51QICCAAw\nFAYIKoZIhvcNAwcECBCxDgvI59i9BIGIY3CAqlMNBgaSI5QiiWVNJ3IpfLnEiEsW\nZ0JIoHyRmKK/+cr9QPLnzxImm0TR9s4JrG3CilzTWvb0jIvbG3hu0zyFPraoMkap\n8eRzWsIvC5SVel+CSjoS2mVS87cyjlD+txrmrXOVYDE+eTgMLbrLmsWh3QkCTRtF\nQC7k0NNzUHTV9yGDwfqMbw==\n-----END ENCRYPTED PRIVATE KEY-----"
+    },
+    {
+      "fixture_id": "secret.stripe.doc.1",
+      "detector": "secret.stripe.api_key",
+      "source": "Stripe official API-key documentation",
+      "source_type": "OFFICIAL_PROVIDER_TEST_DATA",
+      "expected_result": "PatternMatch",
+      "approved_by_maintainer": true,
+      "storage_strategy": "fragmented_test_runtime",
+      "literal_committed": false
     }
   ]
 }

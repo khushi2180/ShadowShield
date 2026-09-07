@@ -6,6 +6,7 @@ pub mod ipv6;
 pub mod jwt;
 pub mod payment_card;
 pub mod private_key;
+pub mod stripe;
 
 pub trait Detector {
     fn id(&self) -> &DetectorId;
