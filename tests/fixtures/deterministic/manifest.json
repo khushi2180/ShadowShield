@@ -127,6 +127,16 @@
       "approved_by_maintainer": true,
       "storage_strategy": "fragmented_test_runtime",
       "literal_committed": false
+    },
+    {
+      "fixture_id": "secret.aws.doc.1",
+      "detector": "secret.aws.credentials",
+      "source": "AWS IAM/CLI documentation examples",
+      "source_type": "OFFICIAL_PROVIDER_TEST_DATA",
+      "expected_result": "ContextCorrelated",
+      "approved_by_maintainer": true,
+      "storage_strategy": "fragmented_test_runtime",
+      "literal_committed": false
     }
   ]
 }

@@ -1,11 +1,15 @@
 use shadowshield_protocol::{Detection, DetectorId, SensitiveText};
 
+pub mod aws;
 pub mod email;
+pub mod github;
+pub mod google;
 pub mod ipv4;
 pub mod ipv6;
 pub mod jwt;
 pub mod payment_card;
 pub mod private_key;
+pub mod slack;
 pub mod stripe;
 
 pub trait Detector {
