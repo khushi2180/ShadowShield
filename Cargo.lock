@@ -292,6 +292,7 @@ dependencies = [
 name = "shadowshield-detectors"
 version = "0.1.0-dev"
 dependencies = [
+ "regex",
  "shadowshield-protocol",
 ]
 

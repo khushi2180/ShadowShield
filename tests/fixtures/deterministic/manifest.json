@@ -1,4 +1,68 @@
 {
   "version": 1,
-  "fixtures": []
+  "fixtures": [
+    {
+      "fixture_id": "pii.ipv4.doc.1",
+      "detector": "pii.network.ipv4",
+      "source": "RFC 5737 documentation range",
+      "source_type": "MAINTAINER_APPROVED_PUBLIC_FIXTURE",
+      "expected_result": "StructurallyValid",
+      "approved_by_maintainer": true,
+      "value": "192.0.2.53"
+    },
+    {
+      "fixture_id": "pii.ipv4.doc.2",
+      "detector": "pii.network.ipv4",
+      "source": "RFC 5737 documentation range",
+      "source_type": "MAINTAINER_APPROVED_PUBLIC_FIXTURE",
+      "expected_result": "StructurallyValid",
+      "approved_by_maintainer": true,
+      "value": "198.51.100.42"
+    },
+    {
+      "fixture_id": "pii.ipv4.doc.3",
+      "detector": "pii.network.ipv4",
+      "source": "RFC 5737 documentation range",
+      "source_type": "MAINTAINER_APPROVED_PUBLIC_FIXTURE",
+      "expected_result": "StructurallyValid",
+      "approved_by_maintainer": true,
+      "value": "203.0.113.10"
+    },
+    {
+      "fixture_id": "pii.ipv6.doc.1",
+      "detector": "pii.network.ipv6",
+      "source": "RFC 3849 documentation prefix",
+      "source_type": "MAINTAINER_APPROVED_PUBLIC_FIXTURE",
+      "expected_result": "StructurallyValid",
+      "approved_by_maintainer": true,
+      "value": "2001:db8::1"
+    },
+    {
+      "fixture_id": "pii.ipv6.doc.2",
+      "detector": "pii.network.ipv6",
+      "source": "RFC 3849 documentation prefix",
+      "source_type": "MAINTAINER_APPROVED_PUBLIC_FIXTURE",
+      "expected_result": "StructurallyValid",
+      "approved_by_maintainer": true,
+      "value": "2001:db8:582:ae33::29"
+    },
+    {
+      "fixture_id": "pii.email.doc.1",
+      "detector": "pii.contact.email",
+      "source": "IANA reserved example domain",
+      "source_type": "MAINTAINER_APPROVED_PUBLIC_FIXTURE",
+      "expected_result": "PatternMatch",
+      "approved_by_maintainer": true,
+      "value": "alice@example.com"
+    },
+    {
+      "fixture_id": "pii.email.doc.2",
+      "detector": "pii.contact.email",
+      "source": "IANA reserved example domain",
+      "source_type": "MAINTAINER_APPROVED_PUBLIC_FIXTURE",
+      "expected_result": "PatternMatch",
+      "approved_by_maintainer": true,
+      "value": "security@example.org"
+    }
+  ]
 }

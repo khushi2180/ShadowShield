@@ -1,7 +1,11 @@
-use shadowshield_protocol::{Detection, SensitiveText};
+use shadowshield_protocol::{Detection, DetectorId, SensitiveText};
+
+pub mod email;
+pub mod ipv4;
+pub mod ipv6;
 
 pub trait Detector {
-    fn id(&self) -> &str;
+    fn id(&self) -> &DetectorId;
 
     /// Inspect pure text context and return any detections.
     /// Does not have access to telemetry, network, filesystem, etc.
