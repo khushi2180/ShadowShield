@@ -367,3 +367,113 @@ mod tests {
         assert!(req_debug.contains("SensitiveText(<redacted>)"));
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AiServiceId(String);
+
+impl AiServiceId {
+    pub fn new(id: &str) -> Result<Self, &'static str> {
+        if id.is_empty() {
+            return Err("empty id");
+        }
+        let mut chars = id.chars();
+        let first = chars.next().unwrap();
+        if !first.is_ascii_lowercase() {
+            return Err("must start with lowercase letter");
+        }
+        let mut prev_was_sep = false;
+        for c in chars {
+            if c == '_' {
+                if prev_was_sep {
+                    return Err("repeated separator");
+                }
+                prev_was_sep = true;
+            } else if c.is_ascii_lowercase() || c.is_ascii_digit() {
+                prev_was_sep = false;
+            } else {
+                return Err("invalid character");
+            }
+        }
+        if prev_was_sep {
+            return Err("trailing separator");
+        }
+
+        Ok(Self(id.to_string()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for AiServiceId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiServiceClassification {
+    Approved,
+    Restricted,
+    Blocked,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiAccessMode {
+    Discovery,
+    Policy,
+    StrictAllowlist,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiAccessDecision {
+    Allow,
+    AllowRestricted,
+    Coach,
+    Block,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiAccessReason {
+    ApprovedService,
+    RestrictedService,
+    BlockedService,
+    UnknownService,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AiService {
+    pub id: AiServiceId,
+    pub display_name: String,
+    pub vendor: String,
+    pub classification: AiServiceClassification,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AiAccessAssessment {
+    pub service_id: AiServiceId,
+    pub classification: AiServiceClassification,
+    pub mode: AiAccessMode,
+    pub decision: AiAccessDecision,
+    pub reason: AiAccessReason,
+}
+
+#[cfg(test)]
+mod ai_governance_tests {
+    use super::*;
+
+    #[test]
+    fn test_ai_service_id_validation() {
+        assert!(AiServiceId::new("chatgpt").is_ok());
+        assert!(AiServiceId::new("gemini_1_5").is_ok());
+
+        assert!(AiServiceId::new("").is_err());
+        assert!(AiServiceId::new("ChatGPT").is_err());
+        assert!(AiServiceId::new("claude-3").is_err());
+        assert!(AiServiceId::new("_gemini").is_err());
+        assert!(AiServiceId::new("gemini_").is_err());
+        assert!(AiServiceId::new("chat__gpt").is_err());
+    }
+}
