@@ -194,9 +194,10 @@ mod tests {
         // Non-zero detections -> Err
         let dummy_detection = Detection {
             category: DetectionCategory::TestStructural,
-            kind: "structural_test".to_string(),
-            detector_id: "test_detector".to_string(),
+            kind: shadowshield_protocol::DetectionKind::new("structural_test").unwrap(),
+            detector_id: shadowshield_protocol::DetectorId::new("test.structural.dummy").unwrap(),
             confidence: Confidence::new(100).unwrap(),
+            validation: shadowshield_protocol::ValidationLevel::PatternMatch,
             location: None,
             severity: Severity::Low,
         };

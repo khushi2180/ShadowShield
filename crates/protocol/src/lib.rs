@@ -57,8 +57,8 @@ impl Confidence {
 /// Location representation using byte offsets to be safe for Unicode and Rust slice operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DetectionLocation {
-    pub start_byte: usize,
-    pub end_byte: usize,
+    start_byte: usize,
+    end_byte: usize,
 }
 
 impl DetectionLocation {
@@ -71,6 +71,14 @@ impl DetectionLocation {
         } else {
             Err("start_byte must be <= end_byte")
         }
+    }
+
+    pub fn start_byte(&self) -> usize {
+        self.start_byte
+    }
+
+    pub fn end_byte(&self) -> usize {
+        self.end_byte
     }
 
     /// Validates that the byte offsets represent valid character boundaries in the given text.
@@ -92,11 +100,107 @@ impl DetectionLocation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DetectionKind(String);
+
+impl DetectionKind {
+    pub fn new(kind: &str) -> Result<Self, &'static str> {
+        if kind.is_empty() {
+            return Err("empty kind");
+        }
+        let mut chars = kind.chars();
+        let first = chars.next().unwrap();
+        if !first.is_ascii_lowercase() {
+            return Err("must start with lowercase letter");
+        }
+        let mut prev_was_sep = false;
+        for c in chars {
+            if c == '_' {
+                if prev_was_sep {
+                    return Err("repeated separator");
+                }
+                prev_was_sep = true;
+            } else if c.is_ascii_lowercase() || c.is_ascii_digit() {
+                prev_was_sep = false;
+            } else {
+                return Err("invalid character");
+            }
+        }
+        if prev_was_sep {
+            return Err("trailing separator");
+        }
+
+        Ok(Self(kind.to_string()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for DetectionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DetectorId(String);
+
+impl DetectorId {
+    pub fn new(id: &str) -> Result<Self, &'static str> {
+        if id.is_empty() {
+            return Err("empty id");
+        }
+        let mut chars = id.chars();
+        let first = chars.next().unwrap();
+        if !first.is_ascii_lowercase() {
+            return Err("must start with lowercase letter");
+        }
+        let mut prev_was_sep = false;
+        for c in chars {
+            if c == '.' || c == '_' {
+                if prev_was_sep {
+                    return Err("repeated separator");
+                }
+                prev_was_sep = true;
+            } else if c.is_ascii_lowercase() || c.is_ascii_digit() {
+                prev_was_sep = false;
+            } else {
+                return Err("invalid character");
+            }
+        }
+        if prev_was_sep {
+            return Err("trailing separator");
+        }
+        Ok(Self(id.to_string()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for DetectorId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ValidationLevel {
+    PatternMatch,
+    StructurallyValid,
+    ChecksumValid,
+    ContextCorrelated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Detection {
     pub category: DetectionCategory,
-    pub kind: String, // e.g. "aws_access_key"
-    pub detector_id: String,
+    pub kind: DetectionKind,
+    pub detector_id: DetectorId,
     pub confidence: Confidence,
+    pub validation: ValidationLevel,
     pub location: Option<DetectionLocation>,
     pub severity: Severity,
 }
@@ -181,13 +285,32 @@ mod tests {
         // Out of range boundary
         let loc4 = DetectionLocation::new(0, 15).unwrap();
         assert!(loc4.validate_for(text).is_err());
+    }
 
-        // Reversed range (though blocked by new(), we can test it conceptually or bypass for test)
-        let loc5 = DetectionLocation {
-            start_byte: 10,
-            end_byte: 5,
-        };
-        assert!(loc5.validate_for(text).is_err());
+    #[test]
+    fn test_detection_kind_validation() {
+        assert!(DetectionKind::new("aws_access_key").is_ok());
+        assert!(DetectionKind::new("aws_access_key_123").is_ok());
+
+        // Invalid
+        assert!(DetectionKind::new("").is_err()); // empty
+        assert!(DetectionKind::new("AWS_KEY").is_err()); // uppercase
+        assert!(DetectionKind::new("aws key").is_err()); // whitespace
+        assert!(DetectionKind::new("aws-key").is_err()); // hyphens
+        assert!(DetectionKind::new("_aws").is_err()); // leading underscore
+        assert!(DetectionKind::new("aws_").is_err()); // trailing underscore
+        assert!(DetectionKind::new("aws__key").is_err()); // repeated underscore
+    }
+
+    #[test]
+    fn test_detector_id_validation() {
+        assert!(DetectorId::new("secret.aws.access_key").is_ok());
+        assert!(DetectorId::new("pii.payment_card").is_ok());
+
+        // Invalid
+        assert!(DetectorId::new("Secret").is_err()); // uppercase
+        assert!(DetectorId::new("secret..aws").is_err()); // repeated separator
+        assert!(DetectorId::new("secret.aws.").is_err()); // trailing separator
     }
 
     #[test]
