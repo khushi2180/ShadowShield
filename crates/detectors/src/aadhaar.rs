@@ -2,8 +2,8 @@ use regex::Regex;
 use std::sync::OnceLock;
 
 use shadowshield_protocol::{
-    Confidence, Detection, DetectionCategory, DetectionKind, DetectionLocation, DetectorId, SensitiveText,
-    Severity, ValidationLevel,
+    Confidence, Detection, DetectionCategory, DetectionKind, DetectionLocation, DetectorId,
+    SensitiveText, Severity, ValidationLevel,
 };
 
 use crate::Detector;
@@ -23,9 +23,10 @@ impl AadhaarDetector {
         static RE: OnceLock<Regex> = OnceLock::new();
         // Discovers 12 digits, potentially grouped by spaces or hyphens (e.g. 1234 5678 9012 or 1234-5678-9012)
         // Aadhaar numbers do not start with 0 or 1.
-        RE.get_or_init(|| Regex::new(
-            r"(?:^|[^0-9])([2-9][0-9]{3}[ \-]?[0-9]{4}[ \-]?[0-9]{4})(?:$|[^0-9])"
-        ).unwrap())
+        RE.get_or_init(|| {
+            Regex::new(r"(?:^|[^0-9])([2-9][0-9]{3}[ \-]?[0-9]{4}[ \-]?[0-9]{4})(?:$|[^0-9])")
+                .unwrap()
+        })
     }
 
     // Standard Verhoeff multiplication table
@@ -61,7 +62,7 @@ impl AadhaarDetector {
 
         let mut c = 0;
         let mut i = 0;
-        
+
         // Reverse iteration over the digits
         for ch in normalized.chars().rev() {
             if let Some(digit) = ch.to_digit(10) {
@@ -100,7 +101,9 @@ impl Detector for AadhaarDetector {
             let normalized = candidate.replace([' ', '-'], "");
 
             if Self::is_verhoeff_valid(&normalized) {
-                if let Ok(location) = DetectionLocation::new(candidate_match.start(), candidate_match.end()) {
+                if let Ok(location) =
+                    DetectionLocation::new(candidate_match.start(), candidate_match.end())
+                {
                     if location.validate_for(text).is_ok() {
                         detections.push(Detection {
                             category: DetectionCategory::Pii,
@@ -127,6 +130,6 @@ mod tests {
     fn test_aadhaar_verhoeff_logic() {
         // Positive credential testing is BLOCKED_BY_FIXTURE.
         // We test only the internal Verhoeff checksum calculation structure with structurally invalid permutations.
-        assert!(AadhaarDetector::is_verhoeff_valid("123456789012") == false); 
+        assert!(!AadhaarDetector::is_verhoeff_valid("123456789012"));
     }
 }

@@ -21,6 +21,27 @@ impl fmt::Debug for SensitiveText {
     }
 }
 
+/// Sanitized text that has been redacted by the policy engine.
+/// Still treated carefully to avoid leaking undetected secrets.
+#[derive(Clone, PartialEq, Eq)]
+pub struct SanitizedText(String);
+
+impl SanitizedText {
+    pub fn new(content: String) -> Self {
+        Self(content)
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for SanitizedText {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SanitizedText(<sanitized>)")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InspectionSource {
     BrowserExtension,
@@ -239,11 +260,25 @@ pub enum PolicyAction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PolicyActionReason {
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RiskAssessment {
+    pub score: u8,
+    pub level: RiskLevel,
+    pub primary_detection_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InspectionResult {
     pub request_id: String,
     pub detections: Vec<Detection>,
-    pub risk: RiskLevel,
+    pub risk_assessment: RiskAssessment,
     pub action: PolicyAction,
+    /// Only present if action == Redact
+    pub sanitized_content: Option<SanitizedText>,
     /// Minimal processing metadata: time taken for inspection in milliseconds.
     pub processing_duration_ms: u64,
 }

@@ -3,8 +3,8 @@ use std::sync::OnceLock;
 use url::Url;
 
 use shadowshield_protocol::{
-    Confidence, Detection, DetectionCategory, DetectionKind, DetectionLocation, DetectorId, SensitiveText,
-    Severity, ValidationLevel,
+    Confidence, Detection, DetectionCategory, DetectionKind, DetectionLocation, DetectorId,
+    SensitiveText, Severity, ValidationLevel,
 };
 
 use crate::Detector;
@@ -23,14 +23,22 @@ impl DatabaseCredentialDetector {
     fn regex() -> &'static Regex {
         static RE: OnceLock<Regex> = OnceLock::new();
         // A rough initial pass to find URI-like structures before formal parsing
-        RE.get_or_init(|| Regex::new(
-            r#"(?i)(?:postgres|postgresql|mysql|mongodb|mongodb\+srv|redis)://[^\s\"'<>]+"#
-        ).unwrap())
+        RE.get_or_init(|| {
+            Regex::new(
+                r#"(?i)(?:postgres|postgresql|mysql|mongodb|mongodb\+srv|redis)://[^\s\"'<>]+"#,
+            )
+            .unwrap()
+        })
     }
 
     fn supported_schemes() -> &'static [&'static str] {
         &[
-            "postgres", "postgresql", "mysql", "mongodb", "mongodb+srv", "redis"
+            "postgres",
+            "postgresql",
+            "mysql",
+            "mongodb",
+            "mongodb+srv",
+            "redis",
         ]
     }
 }
@@ -61,14 +69,17 @@ impl Detector for DatabaseCredentialDetector {
             // Perform formal URI parsing
             if let Ok(parsed_url) = Url::parse(candidate) {
                 // Check if scheme is in our supported list
-                if !Self::supported_schemes().contains(&parsed_url.scheme().to_lowercase().as_str()) {
+                if !Self::supported_schemes().contains(&parsed_url.scheme().to_lowercase().as_str())
+                {
                     continue;
                 }
 
                 // Check if the URI actually embeds authentication secrets
                 // We require a password to consider it a credential leak (not just a public database reference)
                 if parsed_url.password().is_some() {
-                    if let Ok(location) = DetectionLocation::new(candidate_match.start(), candidate_match.end()) {
+                    if let Ok(location) =
+                        DetectionLocation::new(candidate_match.start(), candidate_match.end())
+                    {
                         if location.validate_for(text).is_ok() {
                             detections.push(Detection {
                                 category: DetectionCategory::Credential,
@@ -103,6 +114,10 @@ mod tests {
 
         let user_only_uri = SensitiveText::new("mysql://admin@localhost/db".to_string());
         let user_only_detections = detector.inspect(&user_only_uri);
-        assert_eq!(user_only_detections.len(), 0, "Should ignore URIs with only usernames");
+        assert_eq!(
+            user_only_detections.len(),
+            0,
+            "Should ignore URIs with only usernames"
+        );
     }
 }
