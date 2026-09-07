@@ -1,13 +1,17 @@
 use shadowshield_protocol::{Detection, DetectorId, SensitiveText};
 
+pub mod aadhaar;
 pub mod aws;
+pub mod database;
 pub mod email;
 pub mod github;
 pub mod google;
 pub mod ipv4;
 pub mod ipv6;
 pub mod jwt;
+pub mod pan;
 pub mod payment_card;
+pub mod phone;
 pub mod private_key;
 pub mod slack;
 pub mod stripe;
