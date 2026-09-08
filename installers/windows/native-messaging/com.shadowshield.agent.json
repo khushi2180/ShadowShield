@@ -1,0 +1,9 @@
+{
+  "name": "com.shadowshield.agent",
+  "description": "ShadowShield Enterprise AI Data Protection",
+  "path": "<REPLACE_WITH_ABSOLUTE_PATH_TO_AGENT.BAT>",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://<REPLACE_WITH_EXTENSION_ID>/"
+  ]
+}

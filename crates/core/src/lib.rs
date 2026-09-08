@@ -12,7 +12,7 @@ use redaction::RedactionEngine;
 pub mod ai_governance;
 use ai_governance::policy::AiAccessPolicy;
 use ai_governance::registry::AiServiceRegistry;
-use shadowshield_protocol::{AiAccessAssessment, AiAccessDecision, AiAccessMode, AiServiceClassification, AiServiceId};
+use shadowshield_protocol::{AiAccessAssessment, AiAccessMode, AiServiceId};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum RiskError {
@@ -139,14 +139,35 @@ pub struct Inspector {
 
 impl Inspector {
     pub fn new() -> Self {
+        let mut registry = DetectorRegistry::new();
+        // Register only FixtureVerified detectors.
+        // BLOCKED_BY_FIXTURE detectors (GitHub, Slack, Google, PAN, Aadhaar, Phone, Database, AWS) are NOT registered.
+        registry.register(Box::new(shadowshield_detectors::ipv4::Ipv4Detector::new()));
+        registry.register(Box::new(shadowshield_detectors::ipv6::Ipv6Detector::new()));
+        registry.register(Box::new(shadowshield_detectors::email::EmailDetector::new()));
+        registry.register(Box::new(
+            shadowshield_detectors::payment_card::PaymentCardDetector::new(),
+        ));
+        registry.register(Box::new(
+            shadowshield_detectors::stripe::StripeSecretDetector::new(),
+        ));
+        registry.register(Box::new(shadowshield_detectors::jwt::JwtDetector::new()));
+        registry.register(Box::new(
+            shadowshield_detectors::private_key::PrivateKeyDetector::new(),
+        ));
+
         Self {
-            detectors: DetectorRegistry::new(),
+            detectors: registry,
             risk_engine: RiskEngine::new(),
             policy_engine: PolicyEngine::new(),
             redaction_engine: RedactionEngine::new(),
             ai_registry: AiServiceRegistry::default(), // Load default test models
             ai_policy: AiAccessPolicy::new(),
         }
+    }
+
+    pub fn registered_detectors_count(&self) -> usize {
+        self.detectors.count()
     }
 
     pub fn evaluate_ai_access(
@@ -227,12 +248,12 @@ impl Default for Inspector {
         Self::new()
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use shadowshield_protocol::{
-        Confidence, DetectionCategory, InspectionSource, SensitiveText, Severity,
+        AiAccessDecision, AiAccessMode, AiServiceClassification, AiServiceId, Confidence,
+        DetectionCategory, InspectionSource, SensitiveText, Severity,
     };
 
     #[test]

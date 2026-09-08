@@ -1,7 +1,9 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
+pub mod ipc;
 /// A wrapper for sensitive text ensuring it doesn't accidentally leak in Debug logs.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SensitiveText(String);
 
 impl SensitiveText {
@@ -23,7 +25,7 @@ impl fmt::Debug for SensitiveText {
 
 /// Sanitized text that has been redacted by the policy engine.
 /// Still treated carefully to avoid leaking undetected secrets.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SanitizedText(String);
 
 impl SanitizedText {
@@ -42,13 +44,13 @@ impl fmt::Debug for SanitizedText {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InspectionSource {
     BrowserExtension,
     Unknown,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InspectionRequest {
     pub request_id: String,
     pub source: InspectionSource,
@@ -58,7 +60,7 @@ pub struct InspectionRequest {
 }
 
 /// Confidence representation restricted to 0-100 percentage.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Confidence(u8);
 
 impl Confidence {
@@ -76,7 +78,7 @@ impl Confidence {
 }
 
 /// Location representation using byte offsets to be safe for Unicode and Rust slice operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DetectionLocation {
     start_byte: usize,
     end_byte: usize,
@@ -120,7 +122,7 @@ impl DetectionLocation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DetectionKind(String);
 
 impl DetectionKind {
@@ -164,7 +166,7 @@ impl fmt::Display for DetectionKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DetectorId(String);
 
 impl DetectorId {
@@ -207,7 +209,7 @@ impl fmt::Display for DetectorId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ValidationLevel {
     PatternMatch,
     StructurallyValid,
@@ -215,7 +217,7 @@ pub enum ValidationLevel {
     ContextCorrelated,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Detection {
     pub category: DetectionCategory,
     pub kind: DetectionKind,
@@ -226,7 +228,7 @@ pub struct Detection {
     pub severity: Severity,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DetectionCategory {
     Secret,
     Credential,
@@ -235,7 +237,7 @@ pub enum DetectionCategory {
     TestStructural, // Added purely for structural testing without using security fixtures
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Severity {
     Low,
     Medium,
@@ -243,7 +245,7 @@ pub enum Severity {
     Critical,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum RiskLevel {
     Low,
     Medium,
@@ -251,7 +253,7 @@ pub enum RiskLevel {
     Critical,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PolicyAction {
     Allow,
     Coach,
@@ -259,19 +261,19 @@ pub enum PolicyAction {
     Block,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PolicyActionReason {
     pub message: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RiskAssessment {
     pub score: u8,
     pub level: RiskLevel,
     pub primary_detection_index: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InspectionResult {
     pub request_id: String,
     pub detections: Vec<Detection>,
@@ -368,7 +370,7 @@ mod tests {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AiServiceId(String);
 
 impl AiServiceId {
@@ -412,7 +414,7 @@ impl fmt::Display for AiServiceId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AiServiceClassification {
     Approved,
     Restricted,
@@ -420,14 +422,14 @@ pub enum AiServiceClassification {
     Unknown,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AiAccessMode {
     Discovery,
     Policy,
     StrictAllowlist,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AiAccessDecision {
     Allow,
     AllowRestricted,
@@ -435,7 +437,7 @@ pub enum AiAccessDecision {
     Block,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AiAccessReason {
     ApprovedService,
     RestrictedService,
@@ -443,7 +445,7 @@ pub enum AiAccessReason {
     UnknownService,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AiService {
     pub id: AiServiceId,
     pub display_name: String,
@@ -451,7 +453,7 @@ pub struct AiService {
     pub classification: AiServiceClassification,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AiAccessAssessment {
     pub service_id: AiServiceId,
     pub classification: AiServiceClassification,

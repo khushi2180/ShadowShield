@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "ShadowShield",
+  "version": "0.1.0",
+  "description": "Enterprise AI Data Protection",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "background": {
+    "service_worker": "dist/background/service-worker.js",
+    "type": "module"
+  }
+}

@@ -74,6 +74,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "byteorder"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
+
+[[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -413,6 +419,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
+ "serde_derive",
 ]
 
 [[package]]
@@ -452,8 +459,11 @@ dependencies = [
 name = "shadowshield-agent"
 version = "0.1.0-dev"
 dependencies = [
+ "byteorder",
  "env_logger",
  "log",
+ "serde",
+ "serde_json",
  "shadowshield-core",
  "shadowshield-protocol",
 ]
@@ -463,6 +473,8 @@ name = "shadowshield-core"
 version = "0.1.0-dev"
 dependencies = [
  "log",
+ "serde",
+ "serde_json",
  "shadowshield-detectors",
  "shadowshield-protocol",
 ]
@@ -485,6 +497,10 @@ version = "0.1.0-dev"
 [[package]]
 name = "shadowshield-protocol"
 version = "0.1.0-dev"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "smallvec"

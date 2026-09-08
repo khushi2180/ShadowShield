@@ -48,6 +48,10 @@ impl DetectorRegistry {
         }
         all_detections
     }
+
+    pub fn count(&self) -> usize {
+        self.detectors.len()
+    }
 }
 
 impl Default for DetectorRegistry {

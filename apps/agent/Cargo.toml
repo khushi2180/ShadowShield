@@ -8,3 +8,6 @@ shadowshield-protocol = { path = "../../crates/protocol" }
 shadowshield-core = { path = "../../crates/core" }
 log = "0.4"
 env_logger = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+byteorder = "1.4"
