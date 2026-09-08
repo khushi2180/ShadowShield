@@ -6,8 +6,21 @@
   "permissions": [
     "nativeMessaging"
   ],
+  "host_permissions": [
+    "https://chatgpt.com/*"
+  ],
   "background": {
     "service_worker": "dist/background/service-worker.js",
     "type": "module"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "dist/content/chatgpt-content.js"
+      ]
+    }
+  ]
 }
