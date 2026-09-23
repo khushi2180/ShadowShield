@@ -165,12 +165,9 @@ export class ChatGPTAdapter implements AiSiteAdapter {
         try {
             console.log("processSubmissionEvent trigger:", trigger);
             const text = this.readComposerText().trim();
-            console.log("text read:", text);
             if (!text) return; // Empty submission, ignore
 
-            console.log("hashing text...");
             const currentHash = await hashContent(text);
-            console.log("hashed text:", currentHash);
             
             this.submissionCounter++;
             const submissionId = `sub_${Date.now()}_${this.submissionCounter}`;

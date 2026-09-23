@@ -4,7 +4,7 @@
   "description": "ShadowShield Browser Extension",
   "private": true,
   "scripts": {
-    "build": "tsc",
+    "build": "node build.mjs",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -13,9 +13,13 @@
     "@types/chrome": "^0.0.268",
     "@typescript-eslint/eslint-plugin": "^7.8.0",
     "@typescript-eslint/parser": "^7.8.0",
+    "esbuild": "^0.28.2",
     "eslint": "^8.57.0",
     "jsdom": "^30.0.1",
     "typescript": "^5.4.5",
     "vitest": "^5.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   }
 }

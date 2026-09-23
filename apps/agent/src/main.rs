@@ -2,9 +2,6 @@ use log::info;
 use shadowshield_core::Inspector;
 use std::env;
 
-mod native_messaging;
-mod protocol_handler;
-
 fn main() {
     let args: Vec<String> = env::args().collect();
     let is_native_host = args.iter().any(|arg| arg == "--native-host");
@@ -18,8 +15,8 @@ fn main() {
         builder.target(env_logger::Target::Stderr);
         builder.init();
 
-        info!("Starting ShadowShield Agent in native host mode");
-        protocol_handler::run_host_mode();
+        info!("Starting ShadowShield Agent in native host mode (legacy compat)");
+        shadowshield_agent::protocol_handler::run_host_mode();
         info!("Native host mode terminated");
     } else {
         env_logger::init();
