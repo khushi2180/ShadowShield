@@ -4,8 +4,9 @@ const NATIVE_HOST_NAME = "com.shadowshield.agent";
 
 export class NativeClient {
   private port: chrome.runtime.Port | null = null;
-  private pendingRequests: Map<string, { resolve: (val: any) => void, reject: (err: any) => void }> = new Map();
+  private pendingRequests: Map<string, { resolve: (val: any) => void, reject: (err: any) => void, timerId: ReturnType<typeof setTimeout> }> = new Map();
   private reqCounter = 0;
+  private readonly NATIVE_REQUEST_TIMEOUT_MS = 10000;
 
   public connect() {
     if (this.port) return;
@@ -25,9 +26,10 @@ export class NativeClient {
   private onMessage(msg: any) {
     const response = msg as IpcResponse;
     if (response.request_id && this.pendingRequests.has(response.request_id)) {
-      const { resolve, reject } = this.pendingRequests.get(response.request_id)!;
+      const { resolve, reject, timerId } = this.pendingRequests.get(response.request_id)!;
+      clearTimeout(timerId);
       this.pendingRequests.delete(response.request_id);
-      
+
       if (response.type === "Error") {
         reject(response.payload);
       } else {
@@ -39,7 +41,8 @@ export class NativeClient {
   private onDisconnect() {
     console.warn("Native host disconnected", chrome.runtime.lastError);
     this.port = null;
-    for (const { reject } of this.pendingRequests.values()) {
+    for (const { reject, timerId } of this.pendingRequests.values()) {
+      clearTimeout(timerId);
       reject(new Error("Native host disconnected"));
     }
     this.pendingRequests.clear();
@@ -61,8 +64,21 @@ export class NativeClient {
     };
 
     return new Promise((resolve, reject) => {
-      this.pendingRequests.set(requestId, { resolve, reject });
-      this.port!.postMessage(request);
+      const timerId = setTimeout(() => {
+        if (this.pendingRequests.has(requestId)) {
+          this.pendingRequests.delete(requestId);
+          reject(new Error("Native host request timeout"));
+        }
+      }, this.NATIVE_REQUEST_TIMEOUT_MS);
+
+      this.pendingRequests.set(requestId, { resolve, reject, timerId });
+      try {
+        this.port!.postMessage(request);
+      } catch (e: any) {
+        clearTimeout(timerId);
+        this.pendingRequests.delete(requestId);
+        reject(e);
+      }
     });
   }
 }
