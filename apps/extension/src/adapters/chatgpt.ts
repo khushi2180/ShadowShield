@@ -9,16 +9,37 @@ async function hashContent(text: string): Promise<string> {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// --- Composer type guard ---
+function isTextarea(el: HTMLElement): el is HTMLTextAreaElement {
+    return el.tagName === 'TEXTAREA';
+}
+
+// --- Ordered composer selectors -----------------------------------------------
+// IMPORTANT: ChatGPT DOM is an unstable external boundary. Selectors are ordered
+// from most specific/stable to most general. Never use generated CSS classes.
+// When adding new selectors, document the source and date verified.
+//
+// 1. #mobile-composer-prompt  — textarea, verified live Sep 2026
+// 2. #prompt-textarea         — contenteditable div, previous production version
+// 3. Semantic textarea fallback — single textarea in main/form with prompt role/label
+// 4. Semantic contenteditable fallback — single contenteditable in main/form
+// 5. DEGRADED if multiple candidates are ambiguous
+// ------------------------------------------------------------------------------
+const COMPOSER_ID_SELECTORS = [
+    '#mobile-composer-prompt',   // Current (Sep 2026): textarea
+    '#prompt-textarea',          // Previous: contenteditable div
+];
+
 export class ChatGPTAdapter implements AiSiteAdapter {
     private composer: HTMLElement | null = null;
     private sendButton: HTMLElement | null = null;
     private state: ProtectionState = "Initializing";
     private mutationObserver: MutationObserver | null = null;
     private onUserSubmitCb: ((text: string, submission: InterceptedSubmission) => void) | null = null;
-    
+
     // Scoped one-shot bypass authorizations
     private authorizedBypasses: Set<string> = new Set();
-    
+
     // Internal counters for request ids
     private submissionCounter = 0;
 
@@ -35,45 +56,107 @@ export class ChatGPTAdapter implements AiSiteAdapter {
     }
 
     discoverComposer(): "FOUND" | "NOT_FOUND" | "DEGRADED" {
-        // Implementation heuristic: Ordered strategy for finding composer
-        
-        // 1. Try known selector heuristic (#prompt-textarea) combined with role/semantics
-        let candidate = document.querySelector('#prompt-textarea') as HTMLElement;
-        
-        if (!candidate) {
-            // 2. Try generic contenteditable editor inside a likely main region
-            const contentEditables = document.querySelectorAll('main [contenteditable="true"], form [contenteditable="true"]');
-            if (contentEditables.length === 1) {
-                candidate = contentEditables[0] as HTMLElement;
+        // Step 1: Try stable ID-based selectors in priority order.
+        // These are the most reliable when ChatGPT uses a known element ID.
+        let candidate: HTMLElement | null = null;
+
+        for (const sel of COMPOSER_ID_SELECTORS) {
+            const el = document.querySelector<HTMLElement>(sel);
+            if (el) {
+                candidate = el;
+                break;
             }
         }
 
-        if (candidate) {
-            this.composer = candidate;
-            
-            // Try to find the send button. Usually it is a button near the composer, or has a specific data-testid
-            // For now, look for a button that is a sibling or uncle with aria-label="Send prompt"
-            // or data-testid="send-button"
-            const sendBtnCandidate = document.querySelector('button[data-testid="send-button"]') as HTMLElement;
-            this.sendButton = sendBtnCandidate || null; // Might be null, we'll still protect keyboard
-            
-            return "FOUND";
+        // Step 2: Semantic fallback — find a single textarea scoped to main or a form
+        // with prompt-like semantics. Avoids latching onto arbitrary textareas.
+        if (!candidate) {
+            const textareaNodes = document.querySelectorAll<HTMLTextAreaElement>(
+                'main textarea, form textarea'
+            );
+            // Only bind if unambiguous — exactly one candidate textarea in the primary region.
+            if (textareaNodes.length === 1) {
+                candidate = textareaNodes[0];
+            } else if (textareaNodes.length > 1) {
+                // Ambiguous: multiple textareas in main/form. Return DEGRADED rather than
+                // randomly binding to the wrong one.
+                return "DEGRADED";
+            }
         }
 
-        return "NOT_FOUND";
+        // Step 3: Semantic fallback — contenteditable in main/form (previous ChatGPT design)
+        if (!candidate) {
+            const ceNodes = document.querySelectorAll<HTMLElement>(
+                'main [contenteditable="true"], form [contenteditable="true"]'
+            );
+            if (ceNodes.length === 1) {
+                candidate = ceNodes[0];
+            } else if (ceNodes.length > 1) {
+                return "DEGRADED";
+            }
+        }
+
+        if (!candidate) {
+            return "NOT_FOUND";
+        }
+
+        this.composer = candidate;
+        this.sendButton = this.discoverSendButton();
+        return "FOUND";
+    }
+
+    private discoverSendButton(): HTMLElement | null {
+        // Try stable data-testid first (ChatGPT's own attribute)
+        const byTestId = document.querySelector<HTMLElement>(
+            'button[data-testid="send-button"]'
+        );
+        if (byTestId) return byTestId;
+
+        // Semantic fallback: a button with an aria-label that contains "Send"
+        // (case-insensitive) that is NOT disabled. Avoids voice/stop/attach buttons
+        // which have distinct aria-labels.
+        const allBtns = document.querySelectorAll<HTMLButtonElement>('button[aria-label]');
+        for (const btn of allBtns) {
+            const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+            if (label === 'send message' || label === 'send prompt' || label === 'send') {
+                return btn;
+            }
+        }
+
+        return null;
     }
 
     readComposerText(): string {
         if (!this.composer) return "";
+        if (isTextarea(this.composer)) {
+            return this.composer.value;
+        }
+        // contenteditable: innerText preserves newlines correctly
         return this.composer.innerText || this.composer.textContent || "";
     }
 
     writeComposerText(text: string): void {
         if (!this.composer) return;
-        // In React/Draft.js or similar, simply setting innerText might not trigger React state.
-        // For standard contenteditable, we can try replacing text content.
-        // It's a heuristic. Dispatching input event is usually needed.
-        this.composer.textContent = text;
+
+        if (isTextarea(this.composer)) {
+            // React controls this textarea via synthetic events. We must use the
+            // native value setter to bypass React's internal read-only property
+            // and then dispatch an input event to notify React's event system.
+            const nativeDescriptor = Object.getOwnPropertyDescriptor(
+                HTMLTextAreaElement.prototype,
+                'value'
+            );
+            if (nativeDescriptor && nativeDescriptor.set) {
+                nativeDescriptor.set.call(this.composer, text);
+            } else {
+                (this.composer as HTMLTextAreaElement).value = text;
+            }
+        } else {
+            // contenteditable: set textContent to avoid XSS via innerHTML
+            this.composer.textContent = text;
+        }
+
+        // Notify React/framework of the value change
         this.composer.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
@@ -101,11 +184,10 @@ export class ChatGPTAdapter implements AiSiteAdapter {
         }
     }
 
-
     private setupMutationObserver(): void {
         if (this.mutationObserver) return;
 
-        let debounceTimeout: any = null;
+        let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
         this.mutationObserver = new MutationObserver(() => {
             if (debounceTimeout) clearTimeout(debounceTimeout);
@@ -118,11 +200,13 @@ export class ChatGPTAdapter implements AiSiteAdapter {
     }
 
     private reconcileDom(): void {
-        // If current composer is still connected, don't do anything
+        // If current composer is still connected, nothing to do.
         if (this.composer && document.body.contains(this.composer)) {
             return;
         }
 
+        // Composer was detached — unbind stale listeners immediately so we never
+        // claim Protected for an element that no longer exists.
         this.unbindListeners();
         this.composer = null;
         this.sendButton = null;
@@ -133,7 +217,9 @@ export class ChatGPTAdapter implements AiSiteAdapter {
             if (this.state !== "Disconnected") {
                 this.setProtectionState("Protected");
             }
-        } else if (result === "NOT_FOUND" || result === "DEGRADED") {
+        } else {
+            // NOT_FOUND or DEGRADED: protection is not active for this composer.
+            // Do not claim Protected.
             if (this.state !== "Disconnected") {
                 this.setProtectionState("Degraded");
             }
@@ -141,11 +227,10 @@ export class ChatGPTAdapter implements AiSiteAdapter {
     }
 
     private async handleKeydown(e: KeyboardEvent) {
-        console.log("handleKeydown fired:", e.key, e.isComposing, e.keyCode, "isResumingFlag:", this.isResumingFlag);
         // Ignore IME composition
         if (e.isComposing || e.keyCode === 229) return;
-        
-        // Intercept Enter without Shift (or other modifiers)
+
+        // Intercept plain Enter (no Shift/Ctrl/Meta/Alt)
         if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
             if (this.isResumingFlag) return; // Synchronous bypass for our own synthetic event
             e.preventDefault();
@@ -163,12 +248,11 @@ export class ChatGPTAdapter implements AiSiteAdapter {
 
     private async processSubmissionEvent(trigger: string) {
         try {
-            console.log("processSubmissionEvent trigger:", trigger);
             const text = this.readComposerText().trim();
             if (!text) return; // Empty submission, ignore
 
             const currentHash = await hashContent(text);
-            
+
             this.submissionCounter++;
             const submissionId = `sub_${Date.now()}_${this.submissionCounter}`;
 
@@ -183,7 +267,7 @@ export class ChatGPTAdapter implements AiSiteAdapter {
                 this.onUserSubmitCb(text, submission);
             }
         } catch (err) {
-            console.error("Error in processSubmissionEvent:", err);
+            console.error("ShadowShield: Error in processSubmissionEvent:", err);
         }
     }
 
@@ -196,7 +280,7 @@ export class ChatGPTAdapter implements AiSiteAdapter {
         const currentHash = await hashContent(currentText);
 
         if (!skipHashCheck && currentHash !== submission.contentVersion) {
-            // Stale content! Reject.
+            // Stale content — reject to prevent stale-decision fail-open.
             console.warn("ShadowShield: Composer content changed during inspection. Decision discarded.");
             submission.state = "STOPPED";
             return;
@@ -208,7 +292,7 @@ export class ChatGPTAdapter implements AiSiteAdapter {
             return;
         }
         this.authorizedBypasses.add(currentHash);
-        
+
         // Consume bypass authorization immediately
         this.authorizedBypasses.delete(currentHash);
 
@@ -246,7 +330,10 @@ export class ChatGPTAdapter implements AiSiteAdapter {
 
     setProtectionState(state: ProtectionState): void {
         this.state = state;
-        // The content script will update UI based on this if needed
+    }
+
+    getProtectionState(): ProtectionState {
+        return this.state;
     }
 
     dispose(): void {
