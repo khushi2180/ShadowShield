@@ -1,14 +1,13 @@
 /**
- * ShadowShield content script for chatgpt.com
+ * ShadowShield content script for claude.ai
  *
  * Thin entrypoint — all enforcement logic lives in EnforcementController.
- * ChatGPT remains the validated regression baseline for the enforcement pipeline.
  */
-import { ChatGPTAdapter } from '../adapters/chatgpt';
+import { ClaudeAdapter } from '../adapters/claude';
 import { EnforcementUi } from '../enforcement/ui';
 import { EnforcementController } from './controller';
 
-const adapter = new ChatGPTAdapter();
+const adapter = new ClaudeAdapter();
 const ui = new EnforcementUi();
 const controller = new EnforcementController(adapter, ui);
 

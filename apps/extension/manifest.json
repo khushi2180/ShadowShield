@@ -7,7 +7,9 @@
     "nativeMessaging"
   ],
   "host_permissions": [
-    "https://chatgpt.com/*"
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*"
   ],
   "background": {
     "service_worker": "dist/background/service-worker.js",
@@ -20,6 +22,22 @@
       ],
       "js": [
         "dist/content/chatgpt-content.js"
+      ]
+    },
+    {
+      "matches": [
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "dist/content/claude-content.js"
+      ]
+    },
+    {
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "dist/content/gemini-content.js"
       ]
     }
   ]

@@ -1,14 +1,13 @@
 /**
- * ShadowShield content script for chatgpt.com
+ * ShadowShield content script for gemini.google.com
  *
  * Thin entrypoint — all enforcement logic lives in EnforcementController.
- * ChatGPT remains the validated regression baseline for the enforcement pipeline.
  */
-import { ChatGPTAdapter } from '../adapters/chatgpt';
+import { GeminiAdapter } from '../adapters/gemini';
 import { EnforcementUi } from '../enforcement/ui';
 import { EnforcementController } from './controller';
 
-const adapter = new ChatGPTAdapter();
+const adapter = new GeminiAdapter();
 const ui = new EnforcementUi();
 const controller = new EnforcementController(adapter, ui);
 

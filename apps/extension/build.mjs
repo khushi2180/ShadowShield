@@ -12,16 +12,24 @@ try {
 const commonOptions = {
   bundle: true,
   minify: false,
-  sourcemap: true, // helpful for debugging
+  sourcemap: true,
 };
 
-// Build Content Script (IIFE format)
-await esbuild.build({
-  ...commonOptions,
-  entryPoints: ['src/content/chatgpt-content.ts'],
-  outfile: 'dist/content/chatgpt-content.js',
-  format: 'iife',
-});
+// Build Content Scripts (IIFE format — one per provider)
+const contentEntrypoints = [
+  { in: 'src/content/chatgpt-content.ts', out: 'dist/content/chatgpt-content.js' },
+  { in: 'src/content/claude-content.ts',  out: 'dist/content/claude-content.js'  },
+  { in: 'src/content/gemini-content.ts',  out: 'dist/content/gemini-content.js'  },
+];
+
+for (const ep of contentEntrypoints) {
+  await esbuild.build({
+    ...commonOptions,
+    entryPoints: [ep.in],
+    outfile: ep.out,
+    format: 'iife',
+  });
+}
 
 // Build Service Worker (ESM format)
 await esbuild.build({

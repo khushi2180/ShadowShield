@@ -14,7 +14,7 @@ export interface AiSiteAdapter {
     readComposerText(): string;
     writeComposerText(text: string): void;
     interceptSubmission(onUserSubmit: (text: string, submission: InterceptedSubmission) => void): void;
-    resumeSubmission(submission: InterceptedSubmission): void;
+    resumeSubmission(submission: InterceptedSubmission, skipHashCheck?: boolean): void;
     stopSubmission(submission: InterceptedSubmission): void;
     setProtectionState(state: ProtectionState): void;
     dispose(): void;
