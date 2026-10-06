@@ -1,21 +1,48 @@
-export type UiState = "None" | "Coach" | "Blocked" | "Redacted" | "Disconnected" | "Degraded";
+/**
+ * CoachReason distinguishes the source of a Coach decision so that the UI
+ * can display accurate, provenance-correct wording.
+ *
+ * AiAccess — the AI governance layer flagged the service as unreviewed/unknown.
+ *   DLP has NOT run yet. The UI must NOT claim sensitive data was detected.
+ *
+ * DataProtection — the DLP inspection layer identified a potential policy
+ *   concern. The UI may accurately reference content review.
+ */
+export type CoachReason = "AiAccess" | "DataProtection";
 
+export type UiState =
+    | "None"
+    | "Blocked"
+    | "Redacted"
+    | "Disconnected"
+    | "Degraded";
+
+/**
+ * EnforcementUi — renders privacy-safe enforcement banners in a Shadow DOM.
+ *
+ * Coach is exposed as two distinct methods to enforce provenance at the
+ * call site (type-checked, not string-checked):
+ *
+ *   showAiAccessCoach(callbacks)   — AI governance review, no DLP wording
+ *   showDataProtectionCoach(callbacks) — DLP review, sensitive-data wording
+ *
+ * Privacy invariants:
+ *   - No banner text contains prompt content, hashes, or detection values.
+ *   - No console.log/console.error calls emit content or IPC payloads.
+ */
 export class EnforcementUi {
     private container: HTMLElement;
     private shadowRoot: ShadowRoot;
 
     constructor() {
         this.container = document.createElement('div');
-        // Place it somewhere it won't break layout. 
-        // e.g., fixed bottom, so it floats.
         this.container.style.position = 'fixed';
         this.container.style.bottom = '20px';
         this.container.style.right = '20px';
         this.container.style.zIndex = '999999';
-        
+
         this.shadowRoot = this.container.attachShadow({ mode: 'open' });
-        
-        // Initial styles
+
         const style = document.createElement('style');
         style.textContent = `
             .shield-banner {
@@ -89,20 +116,60 @@ export class EnforcementUi {
             }
         `;
         this.shadowRoot.appendChild(style);
-        
+
         document.body.appendChild(this.container);
     }
 
+    // -------------------------------------------------------------------------
+    // Coach — two distinct methods for accurate provenance
+    // -------------------------------------------------------------------------
+
+    /**
+     * AI Access Coach — shown when the AI governance layer has flagged the
+     * service as unreviewed or not approved by policy.
+     *
+     * DLP has NOT run at this point. Must NOT claim sensitive data was detected.
+     *
+     * Cancel → stopSubmission (caller's responsibility)
+     * Proceed → caller runs DLP inspection
+     */
+    public showAiAccessCoach(
+        callbacks: { onCancel: () => void; onProceed: () => void }
+    ): void {
+        this._showCoachBanner(
+            "AI Service Review",
+            "This AI service has not been approved by your organization's policy. Review before continuing.",
+            callbacks
+        );
+    }
+
+    /**
+     * Data Protection Coach — shown when DLP inspection has identified a
+     * potential policy concern in the submitted content.
+     *
+     * DLP HAS run at this point. May accurately reference content review.
+     *
+     * Cancel → stopSubmission (caller's responsibility)
+     * Proceed → resumeSubmission exactly once (caller's responsibility)
+     */
+    public showDataProtectionCoach(
+        callbacks: { onCancel: () => void; onProceed: () => void }
+    ): void {
+        this._showCoachBanner(
+            "Sensitive Information Detected",
+            "ShadowShield detected potentially sensitive information in this request. Review before continuing.",
+            callbacks
+        );
+    }
+
+    /**
+     * Show a non-coach enforcement state.
+     * Coach states must use showAiAccessCoach() or showDataProtectionCoach().
+     */
     public showState(
-        state: UiState, 
-        callbacks?: { onProceed?: () => void, onCancel?: () => void }
-    ) {
-        console.log("ui.showState called with:", state);
-        // Clear existing
-        const existing = this.shadowRoot.querySelector('.shield-banner');
-        if (existing) {
-            existing.remove();
-        }
+        state: UiState
+    ): void {
+        this._clearBanner();
 
         if (state === "None") return;
 
@@ -111,22 +178,16 @@ export class EnforcementUi {
 
         let title = "ShadowShield";
         let message = "";
-        let showActions = false;
 
         switch (state) {
             case "Blocked":
                 title = "Submission Blocked";
-                message = "ShadowShield blocked this request because it contains sensitive information.";
-                break;
-            case "Coach":
-                title = "Security Review";
-                message = "ShadowShield detected potentially sensitive information.";
-                showActions = true;
+                message = "ShadowShield blocked this request based on your organization's policy.";
                 break;
             case "Redacted":
                 title = "Data Redacted";
                 message = "Sensitive information was redacted before submission.";
-                setTimeout(() => this.showState("None"), 4000); // auto-hide
+                setTimeout(() => this.showState("None"), 4000);
                 break;
             case "Disconnected":
                 title = "Agent Disconnected";
@@ -141,38 +202,62 @@ export class EnforcementUi {
         banner.innerHTML = `
             <div class="shield-title">${title}</div>
             <div class="shield-message">${message}</div>
-            ${showActions ? '<div class="shield-actions"></div>' : ''}
         `;
 
-        if (showActions) {
-            const actions = banner.querySelector('.shield-actions')!;
-            
-            const cancelBtn = document.createElement('button');
-            cancelBtn.textContent = 'Cancel';
-            cancelBtn.onclick = () => {
-                this.showState("None");
-                if (callbacks?.onCancel) callbacks.onCancel();
-            };
-
-            const proceedBtn = document.createElement('button');
-            proceedBtn.className = 'primary';
-            proceedBtn.textContent = 'Proceed';
-            proceedBtn.onclick = () => {
-                this.showState("None");
-                if (callbacks?.onProceed) callbacks.onProceed();
-            };
-
-            actions.appendChild(cancelBtn);
-            actions.appendChild(proceedBtn);
-        }
-
         this.shadowRoot.appendChild(banner);
-        console.log("ui.showState appended banner. Shadow DOM HTML:", this.shadowRoot.innerHTML);
     }
 
-    public dispose() {
+    public dispose(): void {
         if (this.container.parentNode) {
             this.container.parentNode.removeChild(this.container);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Private
+    // -------------------------------------------------------------------------
+
+    private _clearBanner(): void {
+        const existing = this.shadowRoot.querySelector('.shield-banner');
+        if (existing) existing.remove();
+    }
+
+    private _showCoachBanner(
+        title: string,
+        message: string,
+        callbacks: { onCancel: () => void; onProceed: () => void }
+    ): void {
+        this._clearBanner();
+
+        const banner = document.createElement('div');
+        banner.className = 'shield-banner coach';
+
+        banner.innerHTML = `
+            <div class="shield-title">${title}</div>
+            <div class="shield-message">${message}</div>
+            <div class="shield-actions"></div>
+        `;
+
+        const actions = banner.querySelector('.shield-actions')!;
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.onclick = () => {
+            this._clearBanner();
+            callbacks.onCancel();
+        };
+
+        const proceedBtn = document.createElement('button');
+        proceedBtn.className = 'primary';
+        proceedBtn.textContent = 'Proceed';
+        proceedBtn.onclick = () => {
+            this._clearBanner();
+            callbacks.onProceed();
+        };
+
+        actions.appendChild(cancelBtn);
+        actions.appendChild(proceedBtn);
+
+        this.shadowRoot.appendChild(banner);
     }
 }

@@ -142,7 +142,8 @@ export class EnforcementController {
                     ui.showState('Blocked');
                     break;
                 case 'Coach':
-                    ui.showState('Coach', {
+                    // DLP has run at this point — accurate provenance.
+                    ui.showDataProtectionCoach({
                         onCancel: () => adapter.stopSubmission(submission),
                         onProceed: () => adapter.resumeSubmission(submission)
                     });
@@ -186,7 +187,8 @@ export class EnforcementController {
             }
 
             if (accessResp.decision === 'Coach') {
-                ui.showState('Coach', {
+                // AI Access Coach — DLP has NOT run yet. Must not claim sensitive data.
+                ui.showAiAccessCoach({
                     onCancel: () => adapter.stopSubmission(submission),
                     onProceed: () => runDlpInspection()
                 });
