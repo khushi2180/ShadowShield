@@ -3,3 +3,5 @@ packages:
   - 'apps/extension'
   - 'apps/dashboard'
   - 'apps/server'
+allowBuilds:
+  esbuild: true

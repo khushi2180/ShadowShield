@@ -49,7 +49,7 @@ impl AiServiceRegistry {
             id: AiServiceId::new("chatgpt").unwrap(),
             display_name: "ChatGPT".to_string(),
             vendor: "OpenAI".to_string(),
-            classification: AiServiceClassification::Unknown, // No hardcoded trust
+            classification: AiServiceClassification::Approved, // Presentation policy
         });
 
         let _ = registry.register(AiService {
@@ -63,7 +63,7 @@ impl AiServiceRegistry {
             id: AiServiceId::new("gemini").unwrap(),
             display_name: "Gemini".to_string(),
             vendor: "Google".to_string(),
-            classification: AiServiceClassification::Unknown,
+            classification: AiServiceClassification::Approved, // Presentation policy
         });
 
         registry

@@ -285,7 +285,7 @@ mod tests {
         let req = make_request(
             "EvaluateAiAccess",
             serde_json::json!({
-                "service_id": "chatgpt",
+                "service_id": "claude",
                 "mode": "Policy"
             }),
         );

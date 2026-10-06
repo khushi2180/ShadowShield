@@ -32,24 +32,26 @@ Use neutral sentence:
 Explain binary search in one sentence.
 
 Expected:
-
-AI Service Review
-→ Proceed
+    
 → message sends once
 
 Explain:
 
-This first Coach is AI governance because ChatGPT is currently Unknown under
-Policy mode. It is NOT a sensitive-data warning.
+Presentation policy:
+ChatGPT = Approved
+Gemini = Approved
+Claude = Unknown
+
+Approved means:
+AI service usage is permitted,
+BUT every prompt still passes through local DLP.
 
 ## 3. REDACT demo
 
 Copy approved fixture pii.payment_card.doc.1 from the repository fixture mechanism.
 
 Expected:
-
-AI Service Review
-→ Proceed
+    
 → Data Redacted
 → sanitized placeholder submitted
 → original value never reaches provider
@@ -60,8 +62,6 @@ Use ONLY repository-approved BLOCK fixture.
 
 Expected:
 
-AI Service Review
-→ Proceed
 → Submission Blocked
 → provider receives nothing
 
