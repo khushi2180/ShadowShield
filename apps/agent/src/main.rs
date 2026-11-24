@@ -1,4 +1,4 @@
-use log::info;
+use log::{error, info};
 use shadowshield_core::Inspector;
 use std::env;
 
@@ -9,8 +9,6 @@ fn main() {
     if is_native_host {
         // CRITICAL INVARIANT: stdout must be pristine for Native Messaging
         // Do not use env_logger or any other logger that writes to stdout.
-        // For simplicity, we initialize env_logger which targets stderr by default in modern versions,
-        // but to be absolutely safe we should ensure it only goes to stderr.
         let mut builder = env_logger::Builder::from_default_env();
         builder.target(env_logger::Target::Stderr);
         builder.init();
@@ -20,7 +18,7 @@ fn main() {
         info!("Native host mode terminated");
     } else {
         env_logger::init();
-        info!("ShadowShield Agent starting in normal mode");
+        info!("ShadowShield Agent starting in daemon mode (V2 IPC)");
 
         // Initialize the core inspection engine
         let inspector = Inspector::new();
@@ -30,5 +28,16 @@ fn main() {
             inspector.registered_detectors_count()
         );
         info!("Status: ready");
+
+        let config = shadowshield_agent::ipc::IpcServerConfig::default();
+        let server = match shadowshield_agent::ipc::IpcServer::new(config) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to initialize ShadowShield IPC daemon: {:?}", e);
+                std::process::exit(1);
+            }
+        };
+
+        server.run();
     }
 }
