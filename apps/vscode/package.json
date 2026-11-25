@@ -1,0 +1,73 @@
+{
+  "name": "shadowshield-vscode",
+  "displayName": "ShadowShield — Controlled AI Workflow",
+  "description": "Enterprise AI Governance & DLP Protection for VS Code Prompts",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "shadowshield",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Security"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:shadowshield.promptView"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "shadowshield",
+          "title": "ShadowShield",
+          "icon": "$(shield)"
+        }
+      ]
+    },
+    "views": {
+      "shadowshield": [
+        {
+          "type": "webview",
+          "id": "shadowshield.promptView",
+          "name": "Prompt Composer"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "shadowshield.openComposer",
+        "title": "Open Prompt Composer",
+        "category": "ShadowShield"
+      },
+      {
+        "command": "shadowshield.includeSelection",
+        "title": "Include Selected Code in Prompt",
+        "category": "ShadowShield"
+      },
+      {
+        "command": "shadowshield.probeLmCapability",
+        "title": "Probe VS Code Language Model Capability",
+        "category": "ShadowShield"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.0.1",
+    "typescript": "^5.4.5",
+    "vitest": "^5.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
