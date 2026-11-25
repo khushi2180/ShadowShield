@@ -55,11 +55,7 @@ impl PaymentCardDetector {
         }
 
         // Reject mixed separator usage
-        if has_space && has_hyphen {
-            return false;
-        }
-
-        true
+        !(has_space && has_hyphen)
     }
 
     fn luhn_valid(normalized: &str) -> bool {
