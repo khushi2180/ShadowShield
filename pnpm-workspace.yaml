@@ -3,5 +3,6 @@ packages:
   - 'apps/extension'
   - 'apps/dashboard'
   - 'apps/server'
+  - 'apps/vscode'
 allowBuilds:
   esbuild: true
