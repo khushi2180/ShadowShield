@@ -1,0 +1,299 @@
+:root {
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  background-color: #11161d;
+  color: #e6edf3;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #11161d;
+  color: #e6edf3;
+}
+
+.ss-tray-shell {
+  width: 360px;
+  min-height: 460px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #11161d;
+}
+
+.ss-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #26303d;
+  padding-bottom: 10px;
+}
+
+.ss-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ss-shield-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #1f6feb;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ss-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ss-subtitle {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.ss-meta {
+  display: flex;
+  gap: 5px;
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.ss-banner {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #30363d;
+  background: #161b22;
+}
+
+.ss-banner--online {
+  border-color: #2ea043;
+}
+
+.ss-banner--offline {
+  border-color: #f85149;
+}
+
+.ss-banner--stale {
+  border-color: #d29922;
+}
+
+.ss-banner--degraded {
+  border-color: #db6d28;
+}
+
+.ss-banner-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.ss-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.ss-dot--online {
+  background: #3fb950;
+}
+
+.ss-dot--offline {
+  background: #f85149;
+}
+
+.ss-dot--stale {
+  background: #d29922;
+}
+
+.ss-dot--degraded {
+  background: #db6d28;
+}
+
+.ss-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ss-banner-headline {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.ss-banner-desc {
+  font-size: 11px;
+  color: #9da7b3;
+}
+
+.ss-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ss-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8b949e;
+  font-weight: 600;
+}
+
+.ss-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ss-tile {
+  background: #161b22;
+  border: 1px solid #26303d;
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ss-tile-label {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.ss-tile-value {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ss-tone-ok {
+  color: #3fb950;
+}
+
+.ss-tone-warn {
+  color: #d29922;
+}
+
+.ss-tone-off {
+  color: #f85149;
+}
+
+.ss-tone-neutral {
+  color: #9da7b3;
+}
+
+.ss-events {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ss-event {
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: #161b22;
+  border-left: 3px solid #30363d;
+  color: #c9d1d9;
+}
+
+.ss-event--warning {
+  border-left-color: #d29922;
+}
+
+.ss-event--error {
+  border-left-color: #f85149;
+}
+
+.ss-empty {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.ss-footer {
+  margin-top: auto;
+  border-top: 1px solid #26303d;
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ss-mock-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ss-mock-label {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.ss-mock-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.ss-btn {
+  background: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ss-btn:hover:not(:disabled) {
+  background: #30363d;
+}
+
+.ss-btn:focus-visible {
+  outline: 2px solid #58a6ff;
+  outline-offset: 1px;
+}
+
+.ss-btn--active {
+  background: #1f6feb;
+  border-color: #388bfd;
+  color: #ffffff;
+}
+
+.ss-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ss-footer-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ss-posture-note {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.ss-timestamp {
+  font-size: 10px;
+  color: #6e7681;
+}
