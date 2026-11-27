@@ -16,8 +16,10 @@ import {
 
 export interface StatusPollResult {
   connected: boolean;
+  timedOut?: boolean;
   health: HealthResponse | null;
   agentVersion: string;
+  statusReason?: string;
 }
 
 export interface StatusService {

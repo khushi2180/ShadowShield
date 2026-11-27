@@ -87,8 +87,9 @@ export function useAgentStatus({
           }),
         );
       } else {
-        const nextState =
-          !result.res.connected || !result.res.health?.agent_running
+        const nextState = result.res.timedOut
+          ? 'Stale'
+          : !result.res.connected || !result.res.health?.agent_running
             ? 'Offline'
             : result.res.health.inspection_engine_available
               ? 'Online'
@@ -97,7 +98,7 @@ export function useAgentStatus({
         setSnapshot(
           buildStatusSnapshot({
             connected: result.res.connected,
-            timedOut: false,
+            timedOut: Boolean(result.res.timedOut),
             health: result.res.health,
             agentVersion: result.res.agentVersion,
             events,
