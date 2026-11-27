@@ -13,6 +13,8 @@ use super::protocol::{
 
 pub const TRAY_HEALTH_TIMEOUT: Duration = Duration::from_secs(3);
 pub const TRAY_POLL_INTERVAL: Duration = Duration::from_secs(5);
+pub const DEFAULT_RECONNECT_BASE_DELAY: Duration = Duration::from_secs(5);
+pub const DEFAULT_RECONNECT_MAX_DELAY: Duration = Duration::from_secs(60);
 const TRAY_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -205,29 +207,107 @@ enum StepFailure {
     Stale(&'static str),
 }
 
+struct ReconnectBackoff {
+    consecutive_failures: u32,
+    next_retry_at: Option<Instant>,
+    base_delay: Duration,
+    max_delay: Duration,
+    last_failure_state: TrayHealthState,
+    last_failure_reason: &'static str,
+}
+
+impl ReconnectBackoff {
+    fn new(base_delay: Duration, max_delay: Duration) -> Self {
+        Self {
+            consecutive_failures: 0,
+            next_retry_at: None,
+            base_delay,
+            max_delay,
+            last_failure_state: TrayHealthState::Offline,
+            last_failure_reason: "Agent socket unavailable",
+        }
+    }
+
+    fn should_attempt(&self, now: Instant) -> bool {
+        self.next_retry_at.map_or(true, |retry_at| now >= retry_at)
+    }
+
+    fn record_success(&mut self) {
+        self.consecutive_failures = 0;
+        self.next_retry_at = None;
+    }
+
+    fn record_failure(&mut self, now: Instant, state: TrayHealthState, reason: &'static str) {
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        if self.consecutive_failures == 1 {
+            // Allow one immediate retry for transient agent-restart / token-rotation recovery
+            // before engaging exponential backoff.
+            self.next_retry_at = None;
+        } else {
+            let shift = (self.consecutive_failures - 2).min(10);
+            let delay = self
+                .base_delay
+                .saturating_mul(1u32 << shift)
+                .min(self.max_delay);
+            self.next_retry_at = Some(now + delay);
+        }
+        self.last_failure_state = state;
+        self.last_failure_reason = reason;
+    }
+}
+
 pub struct IpcHealthClient<T: IpcTransport> {
     transport: T,
     health_timeout: Duration,
     request_counter: u64,
     session: Option<ActiveSession>,
+    backoff: ReconnectBackoff,
 }
 
 impl<T: IpcTransport> IpcHealthClient<T> {
     pub fn new(transport: T) -> Self {
-        Self::with_timeout(transport, TRAY_HEALTH_TIMEOUT)
+        Self::with_timeout_and_backoff(
+            transport,
+            TRAY_HEALTH_TIMEOUT,
+            DEFAULT_RECONNECT_BASE_DELAY,
+            DEFAULT_RECONNECT_MAX_DELAY,
+        )
     }
 
     pub fn with_timeout(transport: T, health_timeout: Duration) -> Self {
+        Self::with_timeout_and_backoff(
+            transport,
+            health_timeout,
+            DEFAULT_RECONNECT_BASE_DELAY,
+            DEFAULT_RECONNECT_MAX_DELAY,
+        )
+    }
+
+    pub fn with_timeout_and_backoff(
+        transport: T,
+        health_timeout: Duration,
+        base_delay: Duration,
+        max_delay: Duration,
+    ) -> Self {
         Self {
             transport,
             health_timeout,
             request_counter: 0,
             session: None,
+            backoff: ReconnectBackoff::new(base_delay, max_delay),
         }
     }
 
     pub fn has_active_session(&self) -> bool {
         self.session.is_some()
+    }
+
+    pub fn consecutive_failures(&self) -> u32 {
+        self.backoff.consecutive_failures
+    }
+
+    pub fn shutdown(&mut self) {
+        self.session = None;
     }
 
     fn next_request_id(&mut self, prefix: &str) -> String {
@@ -237,19 +317,36 @@ impl<T: IpcTransport> IpcHealthClient<T> {
 
     /// Executes a single health poll within the 3-second TRAY_HEALTH_TIMEOUT deadline.
     /// Connects and runs Authenticate -> Hello when no active session exists,
-    /// re-reading auth.token on every reconnect.
+    /// re-reading auth.token on every reconnect, with bounded exponential backoff.
     pub fn poll_health(&mut self) -> SanitizedHealthStatus {
+        self.poll_health_at(Instant::now())
+    }
+
+    pub fn poll_health_at(&mut self, now: Instant) -> SanitizedHealthStatus {
         let deadline = Instant::now() + self.health_timeout;
 
         if self.session.is_none() {
+            if !self.backoff.should_attempt(now) {
+                return sanitized_status(
+                    self.backoff.last_failure_state,
+                    None,
+                    None,
+                    self.backoff.last_failure_reason,
+                );
+            }
+
             match self.connect_and_handshake(deadline) {
                 Ok(session) => {
                     self.session = Some(session);
                 }
                 Err(StepFailure::Stale(reason)) => {
+                    self.backoff
+                        .record_failure(now, TrayHealthState::Stale, reason);
                     return sanitized_status(TrayHealthState::Stale, None, None, reason);
                 }
                 Err(StepFailure::Offline(reason)) => {
+                    self.backoff
+                        .record_failure(now, TrayHealthState::Offline, reason);
                     return sanitized_status(TrayHealthState::Offline, None, None, reason);
                 }
             }
@@ -259,12 +356,10 @@ impl<T: IpcTransport> IpcHealthClient<T> {
             Some(d) => d,
             None => {
                 self.session = None;
-                return sanitized_status(
-                    TrayHealthState::Stale,
-                    None,
-                    None,
-                    "Health check exceeded 3000 ms timeout",
-                );
+                let reason = "Health check exceeded 3000 ms timeout";
+                self.backoff
+                    .record_failure(now, TrayHealthState::Stale, reason);
+                return sanitized_status(TrayHealthState::Stale, None, None, reason);
             }
         };
 
@@ -291,12 +386,10 @@ impl<T: IpcTransport> IpcHealthClient<T> {
 
             if session.stream.set_timeout(remaining).is_err() {
                 self.session = None;
-                return sanitized_status(
-                    TrayHealthState::Offline,
-                    None,
-                    None,
-                    "Agent socket unavailable",
-                );
+                let reason = "Agent socket unavailable";
+                self.backoff
+                    .record_failure(now, TrayHealthState::Offline, reason);
+                return sanitized_status(TrayHealthState::Offline, None, None, reason);
             }
 
             let res = send_and_expect(
@@ -315,23 +408,19 @@ impl<T: IpcTransport> IpcHealthClient<T> {
                     Ok(h) => h,
                     Err(_) => {
                         self.session = None;
-                        return sanitized_status(
-                            TrayHealthState::Offline,
-                            None,
-                            None,
-                            "Malformed HealthResponse payload",
-                        );
+                        let reason = "Malformed HealthResponse payload";
+                        self.backoff
+                            .record_failure(now, TrayHealthState::Offline, reason);
+                        return sanitized_status(TrayHealthState::Offline, None, None, reason);
                     }
                 };
 
                 if health.protocol_version != PROTOCOL_VERSION {
                     self.session = None;
-                    return sanitized_status(
-                        TrayHealthState::Offline,
-                        None,
-                        None,
-                        "Protocol version mismatch",
-                    );
+                    let reason = "Protocol version mismatch";
+                    self.backoff
+                        .record_failure(now, TrayHealthState::Offline, reason);
+                    return sanitized_status(TrayHealthState::Offline, None, None, reason);
                 }
 
                 let state = if !health.agent_running {
@@ -349,14 +438,19 @@ impl<T: IpcTransport> IpcHealthClient<T> {
                     TrayHealthState::Stale => "Health check timed out",
                 };
 
+                self.backoff.record_success();
                 sanitized_status(state, Some(health), Some(agent_version), reason)
             }
             Err(StepFailure::Stale(reason)) => {
                 self.session = None;
+                self.backoff
+                    .record_failure(now, TrayHealthState::Stale, reason);
                 sanitized_status(TrayHealthState::Stale, None, None, reason)
             }
             Err(StepFailure::Offline(reason)) => {
                 self.session = None;
+                self.backoff
+                    .record_failure(now, TrayHealthState::Offline, reason);
                 sanitized_status(TrayHealthState::Offline, None, None, reason)
             }
         }
