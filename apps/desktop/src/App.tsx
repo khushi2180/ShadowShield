@@ -5,26 +5,46 @@ import { Header } from './components/Header';
 import { StatusBanner } from './components/StatusBanner';
 import { SubsystemGrid } from './components/SubsystemGrid';
 import { useAgentStatus } from './hooks/useAgentStatus';
-import { MockStatusService } from './services/MockStatusService';
+import { MockStatusService, StatusService } from './services/MockStatusService';
+import { TauriStatusService, isTauriRuntime } from './services/TauriStatusService';
 import { AgentConnectionState } from './types/status';
 
 export interface AppProps {
-  service?: MockStatusService;
+  service?: StatusService;
 }
 
 export const App: React.FC<AppProps> = ({ service: injectedService }) => {
-  const service = useMemo(
-    () => injectedService ?? new MockStatusService({ initialScenario: 'Online' }),
-    [injectedService],
-  );
+  const { service, mockService } = useMemo(() => {
+    if (injectedService) {
+      return {
+        service: injectedService,
+        mockService: injectedService instanceof MockStatusService ? injectedService : null,
+      };
+    }
+    if (isTauriRuntime()) {
+      return {
+        service: new TauriStatusService(),
+        mockService: null,
+      };
+    }
+    const fallbackMock = new MockStatusService({ initialScenario: 'Online' });
+    return {
+      service: fallbackMock,
+      mockService: fallbackMock,
+    };
+  }, [injectedService]);
+
   const [selectedScenario, setSelectedScenario] = useState<AgentConnectionState>(
-    service.getScenario(),
+    mockService?.getScenario() ?? 'Online',
   );
 
   const { snapshot, isPolling, refreshNow } = useAgentStatus({ service });
 
   const handleSelectScenario = (scenario: AgentConnectionState) => {
-    service.setScenario(scenario);
+    if (!mockService) {
+      return;
+    }
+    mockService.setScenario(scenario);
     setSelectedScenario(scenario);
     void refreshNow();
   };
@@ -34,6 +54,7 @@ export const App: React.FC<AppProps> = ({ service: injectedService }) => {
       <Header
         agentVersion={snapshot.agentVersion}
         protocolVersion={snapshot.protocolVersion}
+        isMockMode={mockService !== null}
       />
       <StatusBanner
         state={snapshot.state}
@@ -48,6 +69,7 @@ export const App: React.FC<AppProps> = ({ service: injectedService }) => {
         onRefresh={() => void refreshNow()}
         isPolling={isPolling}
         lastCheckedIso={snapshot.lastCheckedIso}
+        showMockControls={mockService !== null}
       />
     </main>
   );

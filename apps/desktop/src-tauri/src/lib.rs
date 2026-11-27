@@ -1,52 +1,44 @@
-use serde::{Deserialize, Serialize};
+pub mod ipc;
+
+use std::sync::Mutex;
+use ipc::client::{default_transport, DefaultTransport};
+use ipc::IpcHealthClient;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
 
-pub const PROTOCOL_VERSION: u32 = 1;
-pub const UNMONITORED_LABEL: &str = "Unknown (unmonitored)";
-
-/// Exact HealthResponse structure from crates/protocol/src/ipc.rs.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct HealthResponse {
-    pub agent_running: bool,
-    pub inspection_engine_available: bool,
-    pub protocol_version: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MockTrayStatus {
-    pub health: HealthResponse,
-    pub browser_protection: String,
-    pub ide_protection: String,
-    pub mode: String,
-}
+pub struct TrayClientState(pub Mutex<IpcHealthClient<DefaultTransport>>);
 
 pub mod commands {
-    use super::{HealthResponse, MockTrayStatus, PROTOCOL_VERSION, UNMONITORED_LABEL};
+    use super::TrayClientState;
+    use crate::ipc::SanitizedHealthStatus;
 
-    /// T1 mock status command: returns deterministic contract-aligned status
-    /// without connecting to any real daemon.
+    /// T2 real health command: queries the Rust IPC health client and returns
+    /// sanitized operational status to the frontend. Never exposes auth tokens.
     #[tauri::command]
-    pub fn get_status() -> MockTrayStatus {
-        MockTrayStatus {
-            health: HealthResponse {
-                agent_running: true,
-                inspection_engine_available: true,
-                protocol_version: PROTOCOL_VERSION,
+    pub fn get_health_status(state: tauri::State<'_, TrayClientState>) -> SanitizedHealthStatus {
+        match state.0.lock() {
+            Ok(mut client) => client.poll_health(),
+            Err(_) => SanitizedHealthStatus {
+                state: crate::ipc::TrayHealthState::Offline,
+                health: None,
+                agent_version: None,
+                browser_protection: crate::ipc::UNMONITORED_LABEL.to_string(),
+                ide_protection: crate::ipc::UNMONITORED_LABEL.to_string(),
+                status_reason: "Tray IPC client lock unavailable".to_string(),
             },
-            browser_protection: UNMONITORED_LABEL.to_string(),
-            ide_protection: UNMONITORED_LABEL.to_string(),
-            mode: "mock".to_string(),
         }
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let client = IpcHealthClient::new(default_transport());
+
     tauri::Builder::default()
+        .manage(TrayClientState(Mutex::new(client)))
         .setup(|app| {
             let show_item = MenuItem::with_id(app, "show_status", "Show Status", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -89,7 +81,7 @@ pub fn run() {
             tray_builder.build(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::get_status])
+        .invoke_handler(tauri::generate_handler![commands::get_health_status])
         .run(tauri::generate_context!())
         .expect("error while running ShadowShield desktop tray");
 }

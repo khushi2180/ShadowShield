@@ -2,11 +2,12 @@ import React from 'react';
 import { AgentConnectionState } from '../types/status';
 
 export interface FooterControlsProps {
-  activeScenario: AgentConnectionState;
-  onSelectScenario: (scenario: AgentConnectionState) => void;
+  activeScenario?: AgentConnectionState;
+  onSelectScenario?: (scenario: AgentConnectionState) => void;
   onRefresh: () => void;
   isPolling: boolean;
   lastCheckedIso: string;
+  showMockControls?: boolean;
 }
 
 const SCENARIOS: AgentConnectionState[] = ['Online', 'Offline', 'Stale', 'Degraded'];
@@ -17,25 +18,28 @@ export const FooterControls: React.FC<FooterControlsProps> = ({
   onRefresh,
   isPolling,
   lastCheckedIso,
+  showMockControls = false,
 }) => {
   return (
     <footer className="ss-footer">
-      <div className="ss-mock-controls" role="group" aria-label="Mock state preview">
-        <span className="ss-mock-label">Mock State:</span>
-        <div className="ss-mock-buttons">
-          {SCENARIOS.map((scenario) => (
-            <button
-              key={scenario}
-              type="button"
-              className={`ss-btn ${activeScenario === scenario ? 'ss-btn--active' : ''}`}
-              aria-pressed={activeScenario === scenario}
-              onClick={() => onSelectScenario(scenario)}
-            >
-              {scenario}
-            </button>
-          ))}
+      {showMockControls && onSelectScenario && activeScenario && (
+        <div className="ss-mock-controls" role="group" aria-label="Mock state preview">
+          <span className="ss-mock-label">Mock State:</span>
+          <div className="ss-mock-buttons">
+            {SCENARIOS.map((scenario) => (
+              <button
+                key={scenario}
+                type="button"
+                className={`ss-btn ${activeScenario === scenario ? 'ss-btn--active' : ''}`}
+                aria-pressed={activeScenario === scenario}
+                onClick={() => onSelectScenario(scenario)}
+              >
+                {scenario}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="ss-footer-meta">
         <span className="ss-posture-note">
