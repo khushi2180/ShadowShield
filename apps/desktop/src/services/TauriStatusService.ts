@@ -34,7 +34,11 @@ export class TauriStatusService implements StatusService {
 
   public async fetchHealth(): Promise<StatusPollResult> {
     const res = await invoke<SanitizedHealthStatus>('get_health_status');
-    this.lastReason = res.status_reason;
+    const safeReason =
+      typeof res.status_reason === 'string' && res.status_reason.trim().length > 0
+        ? res.status_reason
+        : 'Agent status unavailable';
+    this.lastReason = safeReason;
 
     if (res.state === 'Stale') {
       return {
@@ -42,17 +46,17 @@ export class TauriStatusService implements StatusService {
         timedOut: true,
         health: null,
         agentVersion: res.agent_version ?? 'unknown',
-        statusReason: res.status_reason,
+        statusReason: safeReason,
       };
     }
 
-    if (res.state === 'Offline' || !res.health) {
+    if ((res.state !== 'Online' && res.state !== 'Degraded') || !res.health) {
       return {
         connected: false,
         timedOut: false,
         health: null,
         agentVersion: res.agent_version ?? 'unknown',
-        statusReason: res.status_reason,
+        statusReason: safeReason,
       };
     }
 
@@ -64,8 +68,8 @@ export class TauriStatusService implements StatusService {
         inspection_engine_available: Boolean(res.health.inspection_engine_available),
         protocol_version: res.health.protocol_version ?? IPC_CONSTANTS.PROTOCOL_VERSION,
       },
-      agentVersion: res.agent_version ?? '0.1.0-dev',
-      statusReason: res.status_reason,
+      agentVersion: res.agent_version ?? 'unknown',
+      statusReason: safeReason,
     };
   }
 
