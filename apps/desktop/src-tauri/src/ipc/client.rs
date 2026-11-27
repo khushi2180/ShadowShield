@@ -438,6 +438,9 @@ impl<T: IpcTransport> IpcHealthClient<T> {
                     TrayHealthState::Stale => "Health check timed out",
                 };
 
+                if !health.agent_running {
+                    self.session = None;
+                }
                 self.backoff.record_success();
                 sanitized_status(state, Some(health), Some(agent_version), reason)
             }
