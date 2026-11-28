@@ -24,7 +24,25 @@ export const commands = {
 };
 
 export const lm = {
-    selectChatModels: () => Promise.resolve([]),
+    selectChatModels: (options?: { vendor?: string }) => {
+        if (options?.vendor && options.vendor !== 'copilot') {
+            return Promise.resolve([]);
+        }
+        return Promise.resolve([
+            {
+                id: 'copilot-gpt-4o',
+                name: 'GitHub Copilot GPT-4o',
+                vendor: 'copilot',
+                family: 'gpt-4o',
+                maxInputTokens: 128000,
+                sendRequest: async (_messages: any[]) => ({
+                    text: (async function* () {
+                        yield 'Mock response from copilot';
+                    })(),
+                }),
+            },
+        ]);
+    },
 };
 
 export class CancellationTokenSource {

@@ -29,6 +29,10 @@ export class VsCodeEnforcementController {
         return this.currentBanner;
     }
 
+    public setBanner(banner: BannerState): void {
+        this.currentBanner = banner;
+    }
+
     public isBusy(): boolean {
         return this.isInspecting;
     }
@@ -40,15 +44,37 @@ export class VsCodeEnforcementController {
     /**
      * Entrypoint for developer prompt submission.
      * Evaluates AI Access first, followed by DLP inspection if cleared.
+     * Binds immutable content snapshot and model identity to the created ticket.
      */
     public async startSubmission(
         promptText: string,
         selectedCode?: string,
-        serviceId: string = 'github_copilot'
+        serviceId: string = 'github_copilot',
+        modelInfo?: { modelId: string; modelVendor: string }
     ): Promise<DispatchTicket> {
         const trimmedPrompt = promptText.trim();
         if (!trimmedPrompt) {
             throw new Error('Prompt cannot be empty');
+        }
+
+        // Strict model vendor validation
+        if (modelInfo && modelInfo.modelVendor !== 'copilot') {
+            const ticketId = `sub_${Date.now()}_${++this.ticketCounter}`;
+            const failedTicket: DispatchTicket = {
+                id: ticketId,
+                contentHash: hashContent(promptText),
+                targetService: serviceId,
+                state: 'INVALIDATED',
+                rawContent: promptText,
+                createdAt: Date.now(),
+                modelId: modelInfo.modelId,
+                modelVendor: modelInfo.modelVendor,
+            };
+            this.failClosed(
+                failedTicket,
+                `Security violation: Model vendor "${modelInfo.modelVendor}" is unapproved (expected "copilot").`
+            );
+            return failedTicket;
         }
 
         const fullSnapshot = promptText + (selectedCode ? '\n' + selectedCode : '');
@@ -61,6 +87,10 @@ export class VsCodeEnforcementController {
             targetService: serviceId,
             state: 'PENDING',
             rawContent: fullSnapshot,
+            promptText,
+            selectedCode,
+            modelId: modelInfo?.modelId,
+            modelVendor: modelInfo?.modelVendor,
             createdAt: Date.now(),
         };
 
@@ -75,6 +105,11 @@ export class VsCodeEnforcementController {
 
             // Step 1: Evaluate AI Access first (authoritative policy check)
             const accessResp = await this.client.evaluateAiAccess(serviceId, 'Policy');
+
+            if (!accessResp || !accessResp.decision) {
+                this.failClosed(ticket, 'Malformed AI Access response from security engine.');
+                return ticket;
+            }
 
             if (accessResp.decision === 'Block') {
                 ticket.state = 'INVALIDATED';
@@ -100,8 +135,17 @@ export class VsCodeEnforcementController {
                 return ticket;
             }
 
-            // Step 2: If AI Access cleared (Allow / AllowRestricted), proceed to DLP Inspect
-            return await this.runDlpInspection(ticket);
+            if (accessResp.decision === 'Allow' || accessResp.decision === 'AllowRestricted') {
+                // Step 2: Proceed to DLP Inspect
+                return await this.runDlpInspection(ticket);
+            }
+
+            // Unknown AI Access decision fails closed
+            this.failClosed(
+                ticket,
+                `Unknown AI Access decision "${(accessResp as any).decision}" from security engine.`
+            );
+            return ticket;
         } catch (err: any) {
             const msg = err?.message || 'Inspection error';
             this.failClosed(ticket, `ShadowShield request failed: ${msg}`);
@@ -123,6 +167,11 @@ export class VsCodeEnforcementController {
                 content: ticket.rawContent,
                 timestamp: Date.now(),
             });
+
+            if (!inspectResp || !inspectResp.action) {
+                this.failClosed(ticket, 'Malformed DLP response from security engine.');
+                return ticket;
+            }
 
             ticket.action = inspectResp.action;
 
@@ -150,7 +199,11 @@ export class VsCodeEnforcementController {
                     break;
 
                 case 'Redact':
-                    if (inspectResp.sanitized_content !== null && inspectResp.sanitized_content !== undefined) {
+                    if (
+                        inspectResp.sanitized_content !== null &&
+                        inspectResp.sanitized_content !== undefined &&
+                        typeof inspectResp.sanitized_content === 'string'
+                    ) {
                         ticket.state = 'PENDING';
                         ticket.authorizedContent = inspectResp.sanitized_content;
                         this.currentBanner = {
@@ -161,20 +214,26 @@ export class VsCodeEnforcementController {
                             sanitizedContent: inspectResp.sanitized_content,
                         };
                     } else {
-                        // Fail closed if sanitized_content is unexpectedly missing
-                        this.failClosed(ticket, 'Redaction engine returned empty content.');
+                        // Fail closed if sanitized_content is unexpectedly missing or invalid
+                        this.failClosed(ticket, 'Redaction engine returned empty or invalid content.');
                     }
                     break;
 
                 case 'Block':
-                default:
                     ticket.state = 'INVALIDATED';
                     this.currentBanner = {
                         type: 'Block',
                         title: 'Submission Blocked',
                         message:
-                            'ShadowShield blocked this request based on your organization\'s policy.',
+                            "ShadowShield blocked this request based on your organization's policy.",
                     };
+                    break;
+
+                default:
+                    this.failClosed(
+                        ticket,
+                        `Unknown DLP action "${(inspectResp as any).action}" from security engine.`
+                    );
                     break;
             }
 
@@ -188,27 +247,44 @@ export class VsCodeEnforcementController {
 
     /**
      * Handles user clicking Proceed on a Coach banner.
-     * Enforces stale-content protection by checking hash before resuming.
+     * Enforces stale-content and model-stability protection before resuming.
      */
     public async handleCoachProceed(
         ticketId: string,
         currentPromptText: string,
-        currentSelectedCode?: string
+        currentSelectedCode?: string,
+        currentModelInfo?: { modelId: string; modelVendor: string }
     ): Promise<DispatchTicket> {
         const ticket = this.validatePendingTicket(ticketId);
 
         // Stale-content check: Verify user did not edit content while coach banner was displayed
-        const currentSnapshot = currentPromptText + (currentSelectedCode ? '\n' + currentSelectedCode : '');
+        const currentSnapshot =
+            currentPromptText + (currentSelectedCode ? '\n' + currentSelectedCode : '');
         const currentHash = hashContent(currentSnapshot);
 
         if (currentHash !== ticket.contentHash) {
-            // Content mutated during wait — safely discard decision
             ticket.state = 'INVALIDATED';
             this.currentBanner = {
                 type: 'Block',
                 title: 'Submission Cancelled (Stale Content)',
                 message:
                     'Composer content was modified while awaiting confirmation. Inspection discarded.',
+            };
+            return ticket;
+        }
+
+        // Model identity check
+        if (
+            ticket.modelId &&
+            currentModelInfo &&
+            currentModelInfo.modelId !== ticket.modelId
+        ) {
+            ticket.state = 'INVALIDATED';
+            this.currentBanner = {
+                type: 'Block',
+                title: 'Submission Cancelled (Model Changed)',
+                message:
+                    'Target language model changed while awaiting confirmation. Inspection discarded.',
             };
             return ticket;
         }
@@ -251,11 +327,48 @@ export class VsCodeEnforcementController {
 
     /**
      * Handles user confirming redaction write-back and dispatch.
+     * Verifies that the prompt reflects the sanitized text and model hasn't changed.
      */
-    public handleRedactProceed(ticketId: string): DispatchTicket {
+    public handleRedactProceed(
+        ticketId: string,
+        currentPromptText: string,
+        currentSelectedCode?: string,
+        currentModelInfo?: { modelId: string; modelVendor: string }
+    ): DispatchTicket {
         const ticket = this.validatePendingTicket(ticketId);
         if (!ticket.authorizedContent) {
-            this.failClosed(ticket, 'No sanitized content available for dispatch');
+            this.failClosed(ticket, 'No sanitized content available for dispatch.');
+            return ticket;
+        }
+
+        // Write-back verification: if prompt text is provided, it must equal authorized sanitized content
+        if (
+            typeof currentPromptText === 'string' &&
+            currentPromptText !== ticket.authorizedContent
+        ) {
+            ticket.state = 'INVALIDATED';
+            this.currentBanner = {
+                type: 'Block',
+                title: 'Submission Cancelled (Stale Content)',
+                message:
+                    'Redacted text was modified before dispatch. Security authorization discarded.',
+            };
+            return ticket;
+        }
+
+        // Model identity check
+        if (
+            ticket.modelId &&
+            currentModelInfo &&
+            currentModelInfo.modelId !== ticket.modelId
+        ) {
+            ticket.state = 'INVALIDATED';
+            this.currentBanner = {
+                type: 'Block',
+                title: 'Submission Cancelled (Model Changed)',
+                message:
+                    'Target language model changed while awaiting confirmation. Inspection discarded.',
+            };
             return ticket;
         }
 
@@ -275,12 +388,74 @@ export class VsCodeEnforcementController {
         return ticket;
     }
 
+    /**
+     * Pre-dispatch validation gate verifying that an AUTHORIZED ticket remains bound
+     * to the exact content and model identity at the moment of dispatch.
+     */
+    public validateTicketBeforeDispatch(
+        ticketId: string,
+        currentPromptText: string,
+        currentSelectedCode?: string,
+        currentModelId?: string
+    ): DispatchTicket {
+        const ticket = this.activeTicket;
+        if (!ticket || ticket.id !== ticketId) {
+            throw new Error(`Ticket ${ticketId} not found or inactive`);
+        }
+        if (ticket.state !== 'AUTHORIZED') {
+            throw new Error(
+                `Ticket ${ticketId} is not in AUTHORIZED state (is: ${ticket.state})`
+            );
+        }
+
+        // Verify model identity
+        if (ticket.modelId && currentModelId && ticket.modelId !== currentModelId) {
+            ticket.state = 'INVALIDATED';
+            this.currentBanner = {
+                type: 'Block',
+                title: 'Submission Cancelled (Model Changed)',
+                message: 'Target language model changed after authorization. Submission blocked.',
+            };
+            throw new Error('Security violation: Model identity changed after authorization.');
+        }
+
+        // Content verification
+        if (ticket.action === 'Redact') {
+            if (currentPromptText !== ticket.authorizedContent) {
+                ticket.state = 'INVALIDATED';
+                this.currentBanner = {
+                    type: 'Block',
+                    title: 'Submission Cancelled (Stale Content)',
+                    message: 'Redacted content was modified before dispatch. Submission blocked.',
+                };
+                throw new Error('Security violation: Redacted content was modified before dispatch.');
+            }
+        } else {
+            const currentSnapshot =
+                currentPromptText + (currentSelectedCode ? '\n' + currentSelectedCode : '');
+            const currentHash = hashContent(currentSnapshot);
+            if (currentHash !== ticket.contentHash) {
+                ticket.state = 'INVALIDATED';
+                this.currentBanner = {
+                    type: 'Block',
+                    title: 'Submission Cancelled (Stale Content)',
+                    message: 'Composer content was modified after authorization. Submission blocked.',
+                };
+                throw new Error('Security violation: Content modified after authorization.');
+            }
+        }
+
+        return ticket;
+    }
+
     private validatePendingTicket(ticketId: string): DispatchTicket {
         if (!this.activeTicket || this.activeTicket.id !== ticketId) {
             throw new Error(`Ticket ${ticketId} not found or inactive`);
         }
         if (this.activeTicket.state !== 'PENDING') {
-            throw new Error(`Ticket ${ticketId} is not in PENDING state (is: ${this.activeTicket.state})`);
+            throw new Error(
+                `Ticket ${ticketId} is not in PENDING state (is: ${this.activeTicket.state})`
+            );
         }
         return this.activeTicket;
     }
