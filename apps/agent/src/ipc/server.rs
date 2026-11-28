@@ -10,12 +10,14 @@ use std::io;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use super::auth::{self, constant_time_eq, verify_peer_credentials};
-use super::framing::{read_message, write_message, FramingError};
+use super::framing::{
+    read_message_with_deadlines, write_message, FramingError, DEFAULT_FRAME_TIMEOUT,
+};
 use super::transport::{
     default_runtime_dir, recover_stale_socket_and_bind, setup_runtime_dir, SingleInstanceLock,
 };
@@ -25,6 +27,7 @@ const AGENT_VERSION: &str = "0.1.0-dev";
 pub const DEFAULT_MAX_CLIENTS: usize = 16;
 pub const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+pub const DEFAULT_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone)]
 pub struct IpcServerConfig {
@@ -32,6 +35,8 @@ pub struct IpcServerConfig {
     pub max_clients: usize,
     pub handshake_timeout: Duration,
     pub idle_timeout: Duration,
+    pub frame_timeout: Duration,
+    pub shutdown_grace_period: Duration,
 }
 
 impl Default for IpcServerConfig {
@@ -41,6 +46,8 @@ impl Default for IpcServerConfig {
             max_clients: DEFAULT_MAX_CLIENTS,
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             idle_timeout: DEFAULT_IDLE_TIMEOUT,
+            frame_timeout: DEFAULT_FRAME_TIMEOUT,
+            shutdown_grace_period: DEFAULT_SHUTDOWN_GRACE_PERIOD,
         }
     }
 }
@@ -59,6 +66,7 @@ struct AuthenticateResponsePayload {
 pub struct ShutdownHandle {
     signal: Arc<AtomicBool>,
     socket_path: PathBuf,
+    active_clients: Arc<AtomicUsize>,
 }
 
 impl ShutdownHandle {
@@ -66,6 +74,29 @@ impl ShutdownHandle {
         self.signal.store(true, Ordering::SeqCst);
         // Probe connect to unblock listener.accept()
         let _ = UnixStream::connect(&self.socket_path);
+    }
+
+    pub fn is_shutting_down(&self) -> bool {
+        self.signal.load(Ordering::SeqCst)
+    }
+
+    pub fn active_clients_count(&self) -> usize {
+        self.active_clients.load(Ordering::SeqCst)
+    }
+}
+
+struct WorkerGuard {
+    active_counter: Arc<AtomicUsize>,
+    worker_tracker: Arc<(Mutex<usize>, Condvar)>,
+}
+
+impl Drop for WorkerGuard {
+    fn drop(&mut self) {
+        self.active_counter.fetch_sub(1, Ordering::SeqCst);
+        let (lock, cvar) = &*self.worker_tracker;
+        let mut count = lock.lock().unwrap_or_else(|e| e.into_inner());
+        *count = count.saturating_sub(1);
+        cvar.notify_all();
     }
 }
 
@@ -76,6 +107,7 @@ pub struct IpcServer {
     _lock: SingleInstanceLock,
     active_clients: Arc<AtomicUsize>,
     shutdown_signal: Arc<AtomicBool>,
+    worker_tracker: Arc<(Mutex<usize>, Condvar)>,
     inspector: Arc<Inspector>,
 }
 
@@ -102,6 +134,7 @@ impl IpcServer {
             _lock: lock,
             active_clients: Arc::new(AtomicUsize::new(0)),
             shutdown_signal: Arc::new(AtomicBool::new(false)),
+            worker_tracker: Arc::new((Mutex::new(0), Condvar::new())),
             inspector,
         })
     }
@@ -122,13 +155,18 @@ impl IpcServer {
         ShutdownHandle {
             signal: self.shutdown_signal.clone(),
             socket_path: self.socket_path(),
+            active_clients: self.active_clients.clone(),
         }
     }
 
-    pub fn run(mut self) {
+    pub fn active_clients_count(&self) -> usize {
+        self.active_clients.load(Ordering::SeqCst)
+    }
+
+    pub fn run(mut self) -> bool {
         let listener = match self.listener.take() {
             Some(l) => l,
-            None => return,
+            None => return false,
         };
 
         info!(
@@ -167,15 +205,24 @@ impl IpcServer {
                     }
 
                     let active_counter = self.active_clients.clone();
+                    let worker_tracker = self.worker_tracker.clone();
                     let token = self.token.clone();
-                    let handshake_timeout = self.config.handshake_timeout;
-                    let idle_timeout = self.config.idle_timeout;
+                    let config = self.config.clone();
                     let inspector = self.inspector.clone();
+                    let shutdown_signal = self.shutdown_signal.clone();
+
+                    active_counter.fetch_add(1, Ordering::SeqCst);
+                    {
+                        let (lock, _) = &*worker_tracker;
+                        *lock.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+                    }
 
                     thread::spawn(move || {
-                        active_counter.fetch_add(1, Ordering::SeqCst);
-                        handle_client(stream, &token, handshake_timeout, idle_timeout, inspector);
-                        active_counter.fetch_sub(1, Ordering::SeqCst);
+                        let _guard = WorkerGuard {
+                            active_counter,
+                            worker_tracker,
+                        };
+                        handle_client(stream, &token, &config, inspector, shutdown_signal);
                     });
                 }
                 Err(e) => {
@@ -187,7 +234,43 @@ impl IpcServer {
             }
         }
 
-        info!("IPC listener shutting down.");
+        info!(
+            "IPC listener loop stopped. Draining active workers (grace period: {:?})...",
+            self.config.shutdown_grace_period
+        );
+
+        // Bounded graceful drain
+        let (lock, cvar) = &*self.worker_tracker;
+        let mut count = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let start = Instant::now();
+        while *count > 0 {
+            let elapsed = start.elapsed();
+            if elapsed >= self.config.shutdown_grace_period {
+                warn!(
+                    "Shutdown grace period expired with {} active workers remaining",
+                    *count
+                );
+                break;
+            }
+            let rem = self.config.shutdown_grace_period - elapsed;
+            let (new_guard, timeout_res) = cvar
+                .wait_timeout(count, rem)
+                .unwrap_or_else(|e| e.into_inner());
+            count = new_guard;
+            if timeout_res.timed_out() && *count > 0 {
+                warn!(
+                    "Shutdown grace period expired with {} active workers remaining",
+                    *count
+                );
+                break;
+            }
+        }
+
+        let clean = *count == 0;
+        if clean {
+            info!("All workers terminated cleanly within grace period.");
+        }
+        clean
     }
 }
 
@@ -203,33 +286,31 @@ impl Drop for IpcServer {
 fn handle_client(
     mut stream: UnixStream,
     expected_token: &str,
-    handshake_timeout: Duration,
-    idle_timeout: Duration,
+    config: &IpcServerConfig,
     inspector: Arc<Inspector>,
+    shutdown_signal: Arc<AtomicBool>,
 ) {
-    let handshake_deadline = Instant::now() + handshake_timeout;
+    let handshake_deadline = Instant::now() + config.handshake_timeout;
 
-    let remaining_handshake = || -> Option<Duration> {
-        let now = Instant::now();
-        if now >= handshake_deadline {
-            None
-        } else {
-            Some(handshake_deadline - now)
-        }
-    };
+    if shutdown_signal.load(Ordering::SeqCst) {
+        return;
+    }
 
     // -------------------------------------------------------------------------
     // Phase 1: Pre-Auth Phase (First message MUST be Authenticate)
     // -------------------------------------------------------------------------
-    let initial_timeout = match remaining_handshake() {
-        Some(t) => t,
-        None => return,
-    };
-    let _ = stream.set_read_timeout(Some(initial_timeout));
-
-    // Read the very first frame
-    let first_req: IpcRequest = match read_message::<_, IpcRequest>(&mut stream) {
+    let first_req: IpcRequest = match read_message_with_deadlines::<IpcRequest>(
+        &mut stream,
+        None,
+        config.frame_timeout,
+        Some(handshake_deadline),
+    ) {
         Ok(r) => r,
+        Err(FramingError::TimedOut) => {
+            warn!("Handshake read timeout waiting for Authenticate");
+            return;
+        }
+        Err(FramingError::ConnectionClosed) => return,
         Err(FramingError::MessageTooLarge(size)) => {
             let _ = write_error(
                 &mut stream,
@@ -311,17 +392,27 @@ fn handle_client(
     // -------------------------------------------------------------------------
     // Phase 2: AuthenticatedPreHello Phase (Second message MUST be Hello, within shared 5s deadline)
     // -------------------------------------------------------------------------
-    let remaining = match remaining_handshake() {
-        Some(t) => t,
-        None => {
-            warn!("Handshake deadline expired before Hello");
+    if shutdown_signal.load(Ordering::SeqCst) {
+        return;
+    }
+
+    if Instant::now() >= handshake_deadline {
+        warn!("Handshake deadline expired before Hello");
+        return;
+    }
+
+    let second_req: IpcRequest = match read_message_with_deadlines::<IpcRequest>(
+        &mut stream,
+        None,
+        config.frame_timeout,
+        Some(handshake_deadline),
+    ) {
+        Ok(r) => r,
+        Err(FramingError::TimedOut) => {
+            warn!("Handshake read timeout waiting for Hello");
             return;
         }
-    };
-    let _ = stream.set_read_timeout(Some(remaining));
-
-    let second_req: IpcRequest = match read_message::<_, IpcRequest>(&mut stream) {
-        Ok(r) => r,
+        Err(FramingError::ConnectionClosed) => return,
         Err(FramingError::MessageTooLarge(size)) => {
             let _ = write_error(
                 &mut stream,
@@ -403,14 +494,25 @@ fn handle_client(
     }
 
     // -------------------------------------------------------------------------
-    // Phase 3: Operational Phase (Idle timeout applies)
+    // Phase 3: Operational Phase (Idle timeout and absolute frame deadlines apply)
     // -------------------------------------------------------------------------
-    let _ = stream.set_read_timeout(Some(idle_timeout));
-
     loop {
-        let req = match read_message::<_, IpcRequest>(&mut stream) {
+        if shutdown_signal.load(Ordering::SeqCst) {
+            break;
+        }
+
+        let req = match read_message_with_deadlines::<IpcRequest>(
+            &mut stream,
+            Some(config.idle_timeout),
+            config.frame_timeout,
+            None,
+        ) {
             Ok(r) => r,
             Err(FramingError::ConnectionClosed) => {
+                break;
+            }
+            Err(FramingError::TimedOut) => {
+                warn!("Frame reception timed out or idle limit reached, closing connection");
                 break;
             }
             Err(FramingError::MessageTooLarge(size)) => {
@@ -615,6 +717,10 @@ fn handle_client(
                     &format!("Unknown message type: {}", unknown),
                 );
             }
+        }
+
+        if shutdown_signal.load(Ordering::SeqCst) {
+            break;
         }
     }
 }

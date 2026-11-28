@@ -44,6 +44,7 @@ fn start_test_server(test_dir: &Path) -> (IpcServer, String, PathBuf) {
         max_clients: 4,
         handshake_timeout: Duration::from_millis(500),
         idle_timeout: Duration::from_secs(5),
+        ..IpcServerConfig::default()
     };
     let server = IpcServer::new(config).expect("initialize IpcServer");
     let token = server.token().to_string();
@@ -368,6 +369,7 @@ fn test_duplicate_daemon_startup_rejected() {
         max_clients: 4,
         handshake_timeout: Duration::from_millis(500),
         idle_timeout: Duration::from_secs(5),
+        ..IpcServerConfig::default()
     };
 
     let res2 = IpcServer::new(config2);
@@ -422,6 +424,7 @@ fn test_symlink_runtime_path_rejected() {
         max_clients: 4,
         handshake_timeout: Duration::from_millis(500),
         idle_timeout: Duration::from_secs(5),
+        ..IpcServerConfig::default()
     };
 
     let res = IpcServer::new(config);
