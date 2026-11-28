@@ -84,6 +84,16 @@ export class ControlledDispatcher {
             const vscodeRef =
                 options?.vscodeRef || (typeof vscode !== 'undefined' ? vscode : null);
 
+            if (options?.cancellationToken?.isCancellationRequested) {
+                ticket.state = 'CONSUMED';
+                return {
+                    success: false,
+                    destinationService: ticket.targetService,
+                    transmittedContent: contentToSend,
+                    error: 'Operation was cancelled before dispatch',
+                };
+            }
+
             let userMessage: any;
             if (vscodeRef?.LanguageModelChatMessage?.User) {
                 userMessage = vscodeRef.LanguageModelChatMessage.User(contentToSend);
@@ -101,6 +111,9 @@ export class ControlledDispatcher {
             if (response?.text) {
                 if (typeof response.text[Symbol.asyncIterator] === 'function') {
                     for await (const chunk of response.text) {
+                        if (options?.cancellationToken?.isCancellationRequested) {
+                            throw new Error('Operation was cancelled during streaming');
+                        }
                         outputText += chunk;
                     }
                 } else if (typeof response.text === 'string') {

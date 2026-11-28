@@ -20,6 +20,9 @@ export class PromptViewProvider implements vscode.WebviewViewProvider {
     };
 
     private autoDispatch: boolean;
+    private isDisposed = false;
+    private isSubmitting = false;
+    private isProceeding = false;
 
     constructor(
         controller: VsCodeEnforcementController,
@@ -45,6 +48,16 @@ export class PromptViewProvider implements vscode.WebviewViewProvider {
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken
     ): void {
+        this.isDisposed = false;
+        this.controller.invalidateActiveTicket('Webview reloaded');
+        this.state.promptText = '';
+        this.state.selectedCode = undefined;
+        this.state.activeFile = undefined;
+        this.state.languageId = undefined;
+        this.state.banner = { type: 'None' };
+        this.state.isInspecting = false;
+        this.state.lastResponse = undefined;
+
         this.view = webviewView;
 
         webviewView.webview.options = {
@@ -54,9 +67,43 @@ export class PromptViewProvider implements vscode.WebviewViewProvider {
 
         this.updateView();
 
+        if (typeof (webviewView as any).onDidDispose === 'function') {
+            (webviewView as any).onDidDispose(() => {
+                this.handleDisposal();
+            });
+        }
+
         webviewView.webview.onDidReceiveMessage(async (message) => {
             await this.handleWebviewMessage(message);
         });
+    }
+
+    public isWebviewDisposed(): boolean {
+        return this.isDisposed;
+    }
+
+    public handleDisposal(): void {
+        this.isDisposed = true;
+        this.controller.invalidateActiveTicket('Webview disposed');
+        this.state.promptText = '';
+        this.state.selectedCode = undefined;
+        this.state.activeFile = undefined;
+        this.state.languageId = undefined;
+        this.state.banner = { type: 'None' };
+        this.state.isInspecting = false;
+        this.view = undefined;
+    }
+
+    public resetSession(): void {
+        this.controller.invalidateActiveTicket('Session reset');
+        this.state.promptText = '';
+        this.state.selectedCode = undefined;
+        this.state.activeFile = undefined;
+        this.state.languageId = undefined;
+        this.state.banner = { type: 'None' };
+        this.state.isInspecting = false;
+        this.state.lastResponse = undefined;
+        this.updateView();
     }
 
     public getState(): WebviewState {
@@ -123,48 +170,60 @@ export class PromptViewProvider implements vscode.WebviewViewProvider {
     }
 
     public async handleWebviewMessage(message: any): Promise<void> {
+        if (this.isDisposed) {
+            return;
+        }
+
         switch (message.type) {
             case 'submit': {
-                this.state.promptText = message.prompt || '';
-                this.state.selectedService = message.serviceId || 'github_copilot';
-                const intendedModelId = message.modelId || this.state.selectedModelId;
-                this.updateView();
-
-                let verifiedTarget: VerifiedModelTarget | undefined;
-                try {
-                    verifiedTarget = await ModelSelector.resolveApprovedModel(
-                        this.vscodeRef,
-                        intendedModelId
-                    );
-                } catch (err: any) {
-                    this.controller.setBanner({
-                        type: 'Disconnected',
-                        title: 'Protection Unavailable (Fail Closed)',
-                        message: err?.message || 'Language model resolution failed',
-                    });
-                    this.updateView();
+                if (this.isSubmitting || this.controller.isBusy()) {
                     return;
                 }
-
+                this.isSubmitting = true;
                 try {
-                    const ticket = await this.controller.startSubmission(
-                        this.state.promptText,
-                        this.state.selectedCode,
-                        verifiedTarget.serviceId,
-                        { modelId: verifiedTarget.modelId, modelVendor: verifiedTarget.vendor }
-                    );
+                    this.state.promptText = message.prompt || '';
+                    this.state.selectedService = message.serviceId || 'github_copilot';
+                    const intendedModelId = message.modelId || this.state.selectedModelId;
+                    this.updateView();
 
-                    if (this.autoDispatch && ticket.state === 'AUTHORIZED') {
-                        await this.executeDispatch(ticket, verifiedTarget.model);
+                    let verifiedTarget: VerifiedModelTarget | undefined;
+                    try {
+                        verifiedTarget = await ModelSelector.resolveApprovedModel(
+                            this.vscodeRef,
+                            intendedModelId
+                        );
+                    } catch (err: any) {
+                        this.controller.setBanner({
+                            type: 'Disconnected',
+                            title: 'Protection Unavailable (Fail Closed)',
+                            message: err?.message || 'Language model resolution failed',
+                        });
+                        this.updateView();
+                        return;
                     }
-                } catch (err: any) {
-                    this.controller.setBanner({
-                        type: 'Disconnected',
-                        title: 'Submission Error',
-                        message: err?.message || 'Submission error',
-                    });
+
+                    try {
+                        const ticket = await this.controller.startSubmission(
+                            this.state.promptText,
+                            this.state.selectedCode,
+                            verifiedTarget.serviceId,
+                            { modelId: verifiedTarget.modelId, modelVendor: verifiedTarget.vendor }
+                        );
+
+                        if (this.autoDispatch && ticket.state === 'AUTHORIZED') {
+                            await this.executeDispatch(ticket, verifiedTarget.model);
+                        }
+                    } catch (err: any) {
+                        this.controller.setBanner({
+                            type: 'Disconnected',
+                            title: 'Submission Error',
+                            message: err?.message || 'Submission error',
+                        });
+                    }
+                    this.updateView();
+                } finally {
+                    this.isSubmitting = false;
                 }
-                this.updateView();
                 break;
             }
 
@@ -195,33 +254,41 @@ export class PromptViewProvider implements vscode.WebviewViewProvider {
             }
 
             case 'coachProceed': {
-                const ticket = this.controller.getActiveTicket();
-                if (ticket) {
-                    try {
-                        const verifiedTarget = await ModelSelector.resolveApprovedModel(
-                            this.vscodeRef,
-                            ticket.modelId
-                        );
-
-                        const updatedTicket = await this.controller.handleCoachProceed(
-                            ticket.id,
-                            this.state.promptText,
-                            this.state.selectedCode,
-                            { modelId: verifiedTarget.modelId, modelVendor: verifiedTarget.vendor }
-                        );
-
-                        if (this.autoDispatch && updatedTicket.state === 'AUTHORIZED') {
-                            await this.executeDispatch(updatedTicket, verifiedTarget.model);
-                        }
-                    } catch (err: any) {
-                        this.controller.setBanner({
-                            type: 'Disconnected',
-                            title: 'Protection Unavailable (Fail Closed)',
-                            message: err?.message || 'Coach proceed error',
-                        });
-                    }
+                if (this.isProceeding || this.controller.isBusy()) {
+                    return;
                 }
-                this.updateView();
+                this.isProceeding = true;
+                try {
+                    const ticket = this.controller.getActiveTicket();
+                    if (ticket) {
+                        try {
+                            const verifiedTarget = await ModelSelector.resolveApprovedModel(
+                                this.vscodeRef,
+                                ticket.modelId
+                            );
+
+                            const updatedTicket = await this.controller.handleCoachProceed(
+                                ticket.id,
+                                this.state.promptText,
+                                this.state.selectedCode,
+                                { modelId: verifiedTarget.modelId, modelVendor: verifiedTarget.vendor }
+                            );
+
+                            if (this.autoDispatch && updatedTicket.state === 'AUTHORIZED') {
+                                await this.executeDispatch(updatedTicket, verifiedTarget.model);
+                            }
+                        } catch (err: any) {
+                            this.controller.setBanner({
+                                type: 'Disconnected',
+                                title: 'Protection Unavailable (Fail Closed)',
+                                message: err?.message || 'Coach proceed error',
+                            });
+                        }
+                    }
+                    this.updateView();
+                } finally {
+                    this.isProceeding = false;
+                }
                 break;
             }
 
@@ -235,36 +302,44 @@ export class PromptViewProvider implements vscode.WebviewViewProvider {
             }
 
             case 'redactProceed': {
-                const ticket = this.controller.getActiveTicket();
-                if (ticket && ticket.authorizedContent) {
-                    try {
-                        // Write sanitized text back into prompt
-                        this.state.promptText = ticket.authorizedContent;
-
-                        const verifiedTarget = await ModelSelector.resolveApprovedModel(
-                            this.vscodeRef,
-                            ticket.modelId
-                        );
-
-                        const updatedTicket = this.controller.handleRedactProceed(
-                            ticket.id,
-                            this.state.promptText,
-                            this.state.selectedCode,
-                            { modelId: verifiedTarget.modelId, modelVendor: verifiedTarget.vendor }
-                        );
-
-                        if (this.autoDispatch && updatedTicket.state === 'AUTHORIZED') {
-                            await this.executeDispatch(updatedTicket, verifiedTarget.model);
-                        }
-                    } catch (err: any) {
-                        this.controller.setBanner({
-                            type: 'Disconnected',
-                            title: 'Protection Unavailable (Fail Closed)',
-                            message: err?.message || 'Redact proceed error',
-                        });
-                    }
+                if (this.isProceeding || this.controller.isBusy()) {
+                    return;
                 }
-                this.updateView();
+                this.isProceeding = true;
+                try {
+                    const ticket = this.controller.getActiveTicket();
+                    if (ticket && ticket.authorizedContent) {
+                        try {
+                            // Write sanitized text back into prompt
+                            this.state.promptText = ticket.authorizedContent;
+
+                            const verifiedTarget = await ModelSelector.resolveApprovedModel(
+                                this.vscodeRef,
+                                ticket.modelId
+                            );
+
+                            const updatedTicket = this.controller.handleRedactProceed(
+                                ticket.id,
+                                this.state.promptText,
+                                this.state.selectedCode,
+                                { modelId: verifiedTarget.modelId, modelVendor: verifiedTarget.vendor }
+                            );
+
+                            if (this.autoDispatch && updatedTicket.state === 'AUTHORIZED') {
+                                await this.executeDispatch(updatedTicket, verifiedTarget.model);
+                            }
+                        } catch (err: any) {
+                            this.controller.setBanner({
+                                type: 'Disconnected',
+                                title: 'Protection Unavailable (Fail Closed)',
+                                message: err?.message || 'Redact proceed error',
+                            });
+                        }
+                    }
+                    this.updateView();
+                } finally {
+                    this.isProceeding = false;
+                }
                 break;
             }
 

@@ -52,6 +52,15 @@ export class VsCodeEnforcementController {
         serviceId: string = 'github_copilot',
         modelInfo?: { modelId: string; modelVendor: string }
     ): Promise<DispatchTicket> {
+        if (this.isInspecting) {
+            throw new Error('A security inspection is already in progress.');
+        }
+
+        // Invalidate any previously pending or authorized ticket on new submission
+        if (this.activeTicket && this.activeTicket.state !== 'CONSUMED') {
+            this.activeTicket.state = 'INVALIDATED';
+        }
+
         const trimmedPrompt = promptText.trim();
         if (!trimmedPrompt) {
             throw new Error('Prompt cannot be empty');
@@ -105,6 +114,10 @@ export class VsCodeEnforcementController {
 
             // Step 1: Evaluate AI Access first (authoritative policy check)
             const accessResp = await this.client.evaluateAiAccess(serviceId, 'Policy');
+
+            if (ticket.state === 'INVALIDATED') {
+                return ticket;
+            }
 
             if (!accessResp || !accessResp.decision) {
                 this.failClosed(ticket, 'Malformed AI Access response from security engine.');
@@ -167,6 +180,10 @@ export class VsCodeEnforcementController {
                 content: ticket.rawContent,
                 timestamp: Date.now(),
             });
+
+            if (ticket.state === 'INVALIDATED') {
+                return ticket;
+            }
 
             if (!inspectResp || !inspectResp.action) {
                 this.failClosed(ticket, 'Malformed DLP response from security engine.');
@@ -255,7 +272,16 @@ export class VsCodeEnforcementController {
         currentSelectedCode?: string,
         currentModelInfo?: { modelId: string; modelVendor: string }
     ): Promise<DispatchTicket> {
+        if (this.isInspecting) {
+            throw new Error('A security inspection is already in progress.');
+        }
+
         const ticket = this.validatePendingTicket(ticketId);
+
+        if (!this.client.isConnected()) {
+            this.failClosed(ticket, 'Agent disconnected. Submission blocked.');
+            return ticket;
+        }
 
         // Stale-content check: Verify user did not edit content while coach banner was displayed
         const currentSnapshot =
@@ -336,6 +362,12 @@ export class VsCodeEnforcementController {
         currentModelInfo?: { modelId: string; modelVendor: string }
     ): DispatchTicket {
         const ticket = this.validatePendingTicket(ticketId);
+
+        if (!this.client.isConnected()) {
+            this.failClosed(ticket, 'Agent disconnected. Submission blocked.');
+            return ticket;
+        }
+
         if (!ticket.authorizedContent) {
             this.failClosed(ticket, 'No sanitized content available for dispatch.');
             return ticket;
@@ -352,6 +384,21 @@ export class VsCodeEnforcementController {
                 title: 'Submission Cancelled (Stale Content)',
                 message:
                     'Redacted text was modified before dispatch. Security authorization discarded.',
+            };
+            return ticket;
+        }
+
+        // Selected code check: if code was originally selected, it must not be mutated
+        if (
+            ticket.selectedCode !== undefined &&
+            currentSelectedCode !== ticket.selectedCode
+        ) {
+            ticket.state = 'INVALIDATED';
+            this.currentBanner = {
+                type: 'Block',
+                title: 'Submission Cancelled (Stale Content)',
+                message:
+                    'Selected code was modified before dispatch. Security authorization discarded.',
             };
             return ticket;
         }
@@ -446,6 +493,31 @@ export class VsCodeEnforcementController {
         }
 
         return ticket;
+    }
+
+    public handleDisconnect(reason: string = 'Agent disconnected'): void {
+        if (this.activeTicket) {
+            this.activeTicket.state = 'INVALIDATED';
+        }
+        this.currentBanner = {
+            type: 'Disconnected',
+            title: 'Protection Unavailable (Fail Closed)',
+            message: reason,
+        };
+        this.isInspecting = false;
+    }
+
+    public invalidateActiveTicket(reason: string): DispatchTicket | null {
+        if (this.activeTicket) {
+            this.activeTicket.state = 'INVALIDATED';
+        }
+        this.currentBanner = {
+            type: 'Block',
+            title: 'Submission Cancelled',
+            message: reason,
+        };
+        this.isInspecting = false;
+        return this.activeTicket;
     }
 
     private validatePendingTicket(ticketId: string): DispatchTicket {
