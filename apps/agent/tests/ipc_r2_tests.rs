@@ -52,6 +52,7 @@ fn start_test_server(test_dir: &Path) -> (IpcServer, String, PathBuf) {
         max_clients: 8,
         handshake_timeout: Duration::from_millis(1000),
         idle_timeout: Duration::from_secs(5),
+        ..IpcServerConfig::default()
     };
     let server = IpcServer::new(config).expect("initialize IpcServer");
     let token = server.token().to_string();
@@ -68,6 +69,7 @@ fn start_test_server_with_inspector(
         max_clients: 8,
         handshake_timeout: Duration::from_millis(1000),
         idle_timeout: Duration::from_secs(5),
+        ..IpcServerConfig::default()
     };
     let server = IpcServer::with_inspector(config, inspector).expect("initialize IpcServer");
     let token = server.token().to_string();

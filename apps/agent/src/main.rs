@@ -40,6 +40,13 @@ fn main() {
                 }
             };
 
-        server.run();
+        if let Err(e) = shadowshield_agent::ipc::install_signal_handler(server.shutdown_handle()) {
+            log::warn!("Failed to install signal handler: {:?}", e);
+        }
+
+        let clean = server.run();
+        if !clean {
+            log::warn!("Daemon terminated with remaining active workers");
+        }
     }
 }

@@ -10,7 +10,9 @@ use super::sys;
 /// Returns the canonical default runtime directory for ShadowShield V2:
 /// `~/Library/Application Support/ShadowShield/run/` on macOS.
 pub fn default_runtime_dir() -> PathBuf {
-    if let Ok(home) = env::var("HOME") {
+    if let Ok(dir) = env::var("SHADOWSHIELD_RUNTIME_DIR") {
+        PathBuf::from(dir)
+    } else if let Ok(home) = env::var("HOME") {
         PathBuf::from(home)
             .join("Library")
             .join("Application Support")
