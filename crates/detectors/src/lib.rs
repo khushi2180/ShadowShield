@@ -16,7 +16,7 @@ pub mod private_key;
 pub mod slack;
 pub mod stripe;
 
-pub trait Detector {
+pub trait Detector: Send + Sync {
     fn id(&self) -> &DetectorId;
 
     /// Inspect pure text context and return any detections.
@@ -26,7 +26,7 @@ pub trait Detector {
 }
 
 pub struct DetectorRegistry {
-    detectors: Vec<Box<dyn Detector>>,
+    detectors: Vec<Box<dyn Detector + Send + Sync>>,
 }
 
 impl DetectorRegistry {
@@ -36,7 +36,7 @@ impl DetectorRegistry {
         }
     }
 
-    pub fn register(&mut self, detector: Box<dyn Detector>) {
+    pub fn register(&mut self, detector: Box<dyn Detector + Send + Sync>) {
         self.detectors.push(detector);
     }
 
