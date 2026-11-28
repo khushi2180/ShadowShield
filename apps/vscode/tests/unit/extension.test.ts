@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { activate, deactivate, _getInternalState } from '../../src/extension';
+import { MockIpcClient } from '../../src/ipc/mock-client';
+import { RealIpcClient } from '../../src/ipc/real-client';
 
 vi.mock('vscode', () => {
     const subscriptions: any[] = [];
@@ -42,8 +44,10 @@ describe('VS Code Extension Activation', () => {
         } as any;
     });
 
-    it('activates successfully and registers webview provider and commands', () => {
-        activate(mockContext);
+    it('activates successfully with mock client and registers webview provider and commands', () => {
+        const mockClient = new MockIpcClient();
+        mockClient.setAllow();
+        activate(mockContext, { ipcClient: mockClient });
 
         // 1. Registered webview provider
         expect(vscode.window.registerWebviewViewProvider).toHaveBeenCalledWith(
@@ -71,16 +75,26 @@ describe('VS Code Extension Activation', () => {
         // 4. Internal state is initialized with mock client
         const state = _getInternalState();
         expect(state.mockClient).toBeDefined();
-        expect(state.mockClient.isConnected()).toBe(true);
+        expect(state.mockClient!.isConnected()).toBe(true);
         expect(state.controller).toBeDefined();
         expect(state.promptProvider).toBeDefined();
     });
 
-    it('deactivates cleanly and disconnects mock IPC client', () => {
+    it('activates with production RealIpcClient by default (never falls back to mock)', () => {
         activate(mockContext);
+
+        const state = _getInternalState();
+        expect(state.client).toBeInstanceOf(RealIpcClient);
+        expect(state.mockClient).toBeUndefined();
+    });
+
+    it('deactivates cleanly and disconnects active IPC client', () => {
+        const mockClient = new MockIpcClient();
+        mockClient.setAllow();
+        activate(mockContext, { ipcClient: mockClient });
         deactivate();
 
         const state = _getInternalState();
-        expect(state.mockClient.isConnected()).toBe(false);
+        expect(state.mockClient!.isConnected()).toBe(false);
     });
 });

@@ -13,6 +13,28 @@ vi.mock('vscode', () => {
             showInformationMessage: vi.fn(),
             showErrorMessage: vi.fn(),
         },
+        lm: {
+            selectChatModels: vi.fn(async (options?: { vendor?: string }) => {
+                if (options?.vendor && options.vendor !== 'copilot') return [];
+                return [
+                    {
+                        id: 'copilot-gpt-4o',
+                        name: 'GitHub Copilot GPT-4o',
+                        vendor: 'copilot',
+                        family: 'gpt-4o',
+                        sendRequest: vi.fn(async () => ({
+                            text: (async function* () {
+                                yield 'Mock model response';
+                            })(),
+                        })),
+                    },
+                ];
+            }),
+        },
+        LanguageModelChatMessage: {
+            User: (content: string) => ({ role: 1, content }),
+            Assistant: (content: string) => ({ role: 2, content }),
+        },
     };
 });
 

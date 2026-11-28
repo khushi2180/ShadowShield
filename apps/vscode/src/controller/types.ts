@@ -21,6 +21,10 @@ export interface DispatchTicket {
     action?: 'Allow' | 'Coach' | 'Redact' | 'Block';
     coachReason?: CoachReason;
     createdAt: number;
+    modelId?: string;
+    modelVendor?: string;
+    promptText?: string;
+    selectedCode?: string;
 }
 
 export interface PromptContext {
@@ -66,6 +70,8 @@ export interface WebviewState {
     activeFile?: string;
     languageId?: string;
     selectedService: string;
+    selectedModelId?: string;
     banner: BannerState;
     isInspecting: boolean;
+    lastResponse?: string;
 }
