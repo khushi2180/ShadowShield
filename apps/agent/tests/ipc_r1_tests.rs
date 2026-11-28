@@ -472,8 +472,8 @@ fn test_daemon_restart_and_token_rotation() {
 }
 
 #[test]
-fn test_inspect_and_eval_ai_not_supported_in_r1() {
-    let test_dir = TestDirGuard::new("inspect_not_supported");
+fn test_inspect_and_eval_ai_dispatch_in_r2() {
+    let test_dir = TestDirGuard::new("inspect_dispatch");
     let (server, token, socket_path) = start_test_server(test_dir.path());
 
     let shutdown_handle = server.shutdown_handle();
@@ -488,10 +488,10 @@ fn test_inspect_and_eval_ai_not_supported_in_r1() {
     let hello = client.hello("0.1.0", 1).expect("hello");
     assert!(hello.compatible);
 
-    // Try sending Inspect
+    // 1. Inspect is now fully supported in R2
     let inspect_req = IpcRequest {
         protocol_version: 1,
-        request_id: "inspect-r1".to_string(),
+        request_id: "inspect-r2".to_string(),
         msg_type: "Inspect".to_string(),
         payload: serde_json::json!({
             "source": "VSCode",
@@ -502,9 +502,20 @@ fn test_inspect_and_eval_ai_not_supported_in_r1() {
     };
     client.send_request(&inspect_req).unwrap();
 
+    let resp: IpcResponse = read_message(client.stream_mut()).unwrap();
+    assert_eq!(resp.msg_type, "InspectResponse");
+
+    // 2. Unsupported message types receive invalid_request
+    let unsupp_req = IpcRequest {
+        protocol_version: 1,
+        request_id: "unsupp-test".to_string(),
+        msg_type: "UnsupportedAction".to_string(),
+        payload: serde_json::json!({}),
+    };
+    client.send_request(&unsupp_req).unwrap();
+
     let err_resp: IpcErrorResponse = read_message(client.stream_mut()).unwrap();
     assert_eq!(err_resp.payload.code, "invalid_request");
-    assert!(err_resp.payload.message.contains("not supported in R1"));
 
     shutdown_handle.shutdown();
     server_handle.join().expect("server join");

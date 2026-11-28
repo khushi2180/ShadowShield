@@ -1,6 +1,7 @@
 use log::{error, info};
 use shadowshield_core::Inspector;
 use std::env;
+use std::sync::Arc;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -30,13 +31,14 @@ fn main() {
         info!("Status: ready");
 
         let config = shadowshield_agent::ipc::IpcServerConfig::default();
-        let server = match shadowshield_agent::ipc::IpcServer::new(config) {
-            Ok(s) => s,
-            Err(e) => {
-                error!("Failed to initialize ShadowShield IPC daemon: {:?}", e);
-                std::process::exit(1);
-            }
-        };
+        let server =
+            match shadowshield_agent::ipc::IpcServer::with_inspector(config, Arc::new(inspector)) {
+                Ok(s) => s,
+                Err(e) => {
+                    error!("Failed to initialize ShadowShield IPC daemon: {:?}", e);
+                    std::process::exit(1);
+                }
+            };
 
         server.run();
     }

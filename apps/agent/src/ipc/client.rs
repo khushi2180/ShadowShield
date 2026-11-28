@@ -1,6 +1,8 @@
 use shadowshield_protocol::ipc::{
-    HealthRequest, HealthResponse, HelloRequest, HelloResponse, IpcRequest, IpcResponse,
+    EvaluateAiAccessRequest, EvaluateAiAccessResponse, HealthRequest, HealthResponse, HelloRequest,
+    HelloResponse, InspectRequest, InspectResponse, IpcRequest, IpcResponse,
 };
+use shadowshield_protocol::AiAccessMode;
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -71,6 +73,49 @@ impl IpcClient {
         let resp: IpcResponse = read_message(&mut self.stream)?;
         let health_resp: HealthResponse = serde_json::from_value(resp.payload)?;
         Ok(health_resp)
+    }
+
+    pub fn evaluate_ai_access(
+        &mut self,
+        service_id: &str,
+        mode: AiAccessMode,
+    ) -> Result<EvaluateAiAccessResponse, FramingError> {
+        let req = IpcRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "eval-init".to_string(),
+            msg_type: "EvaluateAiAccess".to_string(),
+            payload: serde_json::to_value(EvaluateAiAccessRequest {
+                service_id: service_id.to_string(),
+                mode,
+            })?,
+        };
+        write_message(&mut self.stream, &req)?;
+        let resp: IpcResponse = read_message(&mut self.stream)?;
+        let eval_resp: EvaluateAiAccessResponse = serde_json::from_value(resp.payload)?;
+        Ok(eval_resp)
+    }
+
+    pub fn inspect(
+        &mut self,
+        source: &str,
+        ai_service: &str,
+        content: &str,
+    ) -> Result<InspectResponse, FramingError> {
+        let req = IpcRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "inspect-init".to_string(),
+            msg_type: "Inspect".to_string(),
+            payload: serde_json::to_value(InspectRequest {
+                source: source.to_string(),
+                ai_service: ai_service.to_string(),
+                content: content.to_string(),
+                timestamp: 1728691200000,
+            })?,
+        };
+        write_message(&mut self.stream, &req)?;
+        let resp: IpcResponse = read_message(&mut self.stream)?;
+        let inspect_resp: InspectResponse = serde_json::from_value(resp.payload)?;
+        Ok(inspect_resp)
     }
 
     pub fn send_request(&mut self, req: &IpcRequest) -> Result<(), FramingError> {

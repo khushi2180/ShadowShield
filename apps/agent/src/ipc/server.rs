@@ -1,8 +1,10 @@
 use log::{error, info, warn};
+use shadowshield_core::{Inspector, InspectorError};
 use shadowshield_protocol::ipc::{
-    HealthResponse, HelloRequest, HelloResponse, IpcErrorPayload, IpcErrorResponse, IpcRequest,
-    IpcResponse,
+    EvaluateAiAccessRequest, EvaluateAiAccessResponse, HealthResponse, HelloRequest, HelloResponse,
+    InspectRequest, InspectResponse, IpcErrorPayload, IpcErrorResponse, IpcRequest, IpcResponse,
 };
+use shadowshield_protocol::{AiServiceId, InspectionRequest, InspectionSource, SensitiveText};
 use std::fs;
 use std::io;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -74,10 +76,15 @@ pub struct IpcServer {
     _lock: SingleInstanceLock,
     active_clients: Arc<AtomicUsize>,
     shutdown_signal: Arc<AtomicBool>,
+    inspector: Arc<Inspector>,
 }
 
 impl IpcServer {
     pub fn new(config: IpcServerConfig) -> io::Result<Self> {
+        Self::with_inspector(config, Arc::new(Inspector::new()))
+    }
+
+    pub fn with_inspector(config: IpcServerConfig, inspector: Arc<Inspector>) -> io::Result<Self> {
         setup_runtime_dir(&config.runtime_dir)?;
 
         let lock = SingleInstanceLock::acquire(&config.runtime_dir)?;
@@ -95,6 +102,7 @@ impl IpcServer {
             _lock: lock,
             active_clients: Arc::new(AtomicUsize::new(0)),
             shutdown_signal: Arc::new(AtomicBool::new(false)),
+            inspector,
         })
     }
 
@@ -162,10 +170,11 @@ impl IpcServer {
                     let token = self.token.clone();
                     let handshake_timeout = self.config.handshake_timeout;
                     let idle_timeout = self.config.idle_timeout;
+                    let inspector = self.inspector.clone();
 
                     thread::spawn(move || {
                         active_counter.fetch_add(1, Ordering::SeqCst);
-                        handle_client(stream, &token, handshake_timeout, idle_timeout);
+                        handle_client(stream, &token, handshake_timeout, idle_timeout, inspector);
                         active_counter.fetch_sub(1, Ordering::SeqCst);
                     });
                 }
@@ -196,6 +205,7 @@ fn handle_client(
     expected_token: &str,
     handshake_timeout: Duration,
     idle_timeout: Duration,
+    inspector: Arc<Inspector>,
 ) {
     let handshake_deadline = Instant::now() + handshake_timeout;
 
@@ -486,13 +496,116 @@ fn handle_client(
                     break;
                 }
             }
-            "Inspect" | "EvaluateAiAccess" => {
-                let _ = write_error(
-                    &mut stream,
-                    Some(req.request_id),
-                    "invalid_request",
-                    "Operation not supported in R1 transport",
-                );
+            "EvaluateAiAccess" => {
+                let eval_req: EvaluateAiAccessRequest = match serde_json::from_value(req.payload) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        let _ = write_error(
+                            &mut stream,
+                            Some(req.request_id),
+                            "malformed_message",
+                            "Invalid EvaluateAiAccess payload",
+                        );
+                        continue;
+                    }
+                };
+
+                let service_id_parsed = match AiServiceId::new(&eval_req.service_id) {
+                    Ok(id) => id,
+                    Err(e) => {
+                        let _ = write_error(
+                            &mut stream,
+                            Some(req.request_id),
+                            "invalid_request",
+                            &format!("Invalid AiServiceId: {}", e),
+                        );
+                        continue;
+                    }
+                };
+
+                let assessment = inspector.evaluate_ai_access(&service_id_parsed, &eval_req.mode);
+
+                let resp = IpcResponse {
+                    protocol_version: PROTOCOL_VERSION,
+                    request_id: req.request_id,
+                    msg_type: "EvaluateAiAccessResponse".to_string(),
+                    payload: serde_json::to_value(EvaluateAiAccessResponse {
+                        service_id: assessment.service_id.as_str().to_string(),
+                        classification: assessment.classification,
+                        mode: assessment.mode,
+                        decision: assessment.decision,
+                        reason: assessment.reason,
+                    })
+                    .unwrap(),
+                };
+                if let Err(e) = write_message(&mut stream, &resp) {
+                    warn!("Failed to write EvaluateAiAccessResponse: {:?}", e);
+                    break;
+                }
+            }
+            "Inspect" => {
+                let inspect_req: InspectRequest = match serde_json::from_value(req.payload) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        let _ = write_error(
+                            &mut stream,
+                            Some(req.request_id),
+                            "malformed_message",
+                            "Invalid Inspect payload",
+                        );
+                        continue;
+                    }
+                };
+
+                let source = match inspect_req.source.as_str() {
+                    "BrowserExtension" | "Chrome" => InspectionSource::BrowserExtension,
+                    _ => InspectionSource::Unknown,
+                };
+
+                let inspection_req = InspectionRequest {
+                    request_id: req.request_id.clone(),
+                    source,
+                    ai_service: inspect_req.ai_service,
+                    content: SensitiveText::new(inspect_req.content),
+                    timestamp: inspect_req.timestamp,
+                };
+
+                match inspector.inspect(inspection_req) {
+                    Ok(result) => {
+                        let resp = IpcResponse {
+                            protocol_version: PROTOCOL_VERSION,
+                            request_id: req.request_id,
+                            msg_type: "InspectResponse".to_string(),
+                            payload: serde_json::to_value(InspectResponse {
+                                detections_count: result.detections.len(),
+                                detections: result.detections,
+                                risk_assessment: result.risk_assessment,
+                                action: result.action,
+                                sanitized_content: result
+                                    .sanitized_content
+                                    .map(|s| s.expose().to_string()),
+                                processing_duration_ms: result.processing_duration_ms,
+                            })
+                            .unwrap(),
+                        };
+                        if let Err(e) = write_message(&mut stream, &resp) {
+                            warn!("Failed to write InspectResponse: {:?}", e);
+                            break;
+                        }
+                    }
+                    Err(InspectorError::InvalidRequest(msg)) => {
+                        let _ =
+                            write_error(&mut stream, Some(req.request_id), "invalid_request", &msg);
+                    }
+                    Err(e) => {
+                        let _ = write_error(
+                            &mut stream,
+                            Some(req.request_id),
+                            "internal_error",
+                            &format!("Inspection failed: {:?}", e),
+                        );
+                    }
+                }
             }
             unknown => {
                 let _ = write_error(

@@ -170,6 +170,13 @@ impl Inspector {
         self.detectors.count()
     }
 
+    pub fn register_ai_service(
+        &mut self,
+        service: shadowshield_protocol::AiService,
+    ) -> Result<(), ai_governance::registry::RegistryError> {
+        self.ai_registry.register(service)
+    }
+
     pub fn evaluate_ai_access(
         &self,
         service_id: &AiServiceId,

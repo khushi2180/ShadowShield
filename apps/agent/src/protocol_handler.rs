@@ -63,7 +63,7 @@ pub fn run_host_mode() {
     }
 }
 
-fn handle_request(req: IpcRequest, inspector: &Inspector) -> IpcResponse {
+pub fn handle_request(req: IpcRequest, inspector: &Inspector) -> IpcResponse {
     if req.protocol_version != PROTOCOL_VERSION {
         return build_error(
             req.request_id,
